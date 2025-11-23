@@ -996,6 +996,63 @@ async def admin_search_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_ADMIN_SEARCH
 
 
+async def admin_search_callback_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry point для поиска из CallbackQuery"""
+    if update.callback_query and update.callback_query.data == "admin_search":
+        user_id = update.effective_user.id
+        if is_admin(user_id):
+            await update.callback_query.answer()
+            await update.callback_query.message.reply_text(
+                "🔍 Введите номер заявки для поиска:\n\n"
+                "Формат: ST-000001 (для активаций) или BUY-000001 (для покупок)\n\n"
+                "Или отправьте /cancel для отмены."
+            )
+            return WAITING_ADMIN_SEARCH
+    return None
+
+
+async def admin_edit_callback_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry point для редактирования email/пароля из CallbackQuery"""
+    if update.callback_query and update.callback_query.data and update.callback_query.data.startswith("edit_cred_"):
+        user_id = update.effective_user.id
+        if is_admin(user_id):
+            await update.callback_query.answer()
+            activation_id = int(update.callback_query.data.split("_")[2])
+            context.user_data['cred_activation_id'] = activation_id
+            context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
+            activation = get_activation_by_id(activation_id)
+            if activation:
+                act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
+                request_number = f"ST-{act_id:06d}"
+                current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
+                await update.callback_query.message.reply_text(
+                    f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
+                    f"Или отправьте /cancel для отмены."
+                )
+                return WAITING_ADMIN_EMAIL
+    return None
+
+
+async def admin_start_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fallback для /start в админ ConversationHandler"""
+    context.user_data.clear()
+    welcome_text = (
+        "Добро пожаловать! 👋\n\n"
+        "Это техподдержка по активации терминалов Starlink. "
+        "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
+        "Выберите нужное действие:"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
+        [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    return ConversationHandler.END
+
+
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1496,60 +1553,6 @@ def main():
         ],
         allow_reentry=True,
     )
-    
-    async def admin_search_callback_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Entry point для поиска из CallbackQuery"""
-        if update.callback_query and update.callback_query.data == "admin_search":
-            user_id = update.effective_user.id
-            if is_admin(user_id):
-                await update.callback_query.answer()
-                await update.callback_query.message.reply_text(
-                    "🔍 Введите номер заявки для поиска:\n\n"
-                    "Формат: ST-000001 (для активаций) или BUY-000001 (для покупок)\n\n"
-                    "Или отправьте /cancel для отмены."
-                )
-                return WAITING_ADMIN_SEARCH
-        return None
-    
-    async def admin_edit_callback_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Entry point для редактирования email/пароля из CallbackQuery"""
-        if update.callback_query and update.callback_query.data and update.callback_query.data.startswith("edit_cred_"):
-            user_id = update.effective_user.id
-            if is_admin(user_id):
-                await update.callback_query.answer()
-                activation_id = int(update.callback_query.data.split("_")[2])
-                context.user_data['cred_activation_id'] = activation_id
-                context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
-                activation = get_activation_by_id(activation_id)
-                if activation:
-                    act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
-                    request_number = f"ST-{act_id:06d}"
-                    current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
-                    await update.callback_query.message.reply_text(
-                        f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
-                        f"Или отправьте /cancel для отмены."
-                    )
-                    return WAITING_ADMIN_EMAIL
-        return None
-    
-    async def admin_start_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Fallback для /start в админ ConversationHandler"""
-        context.user_data.clear()
-        welcome_text = (
-            "Добро пожаловать! 👋\n\n"
-            "Это техподдержка по активации терминалов Starlink. "
-            "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
-            "Выберите нужное действие:"
-        )
-        
-        keyboard = [
-            [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
-            [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-        return ConversationHandler.END
     
     admin_password_handler_conv = ConversationHandler(
         entry_points=[
