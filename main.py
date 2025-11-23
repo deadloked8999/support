@@ -770,30 +770,8 @@ def main():
         ],
     )
     
-    async def add_cred_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        query = update.callback_query
-        if query:
-            await query.answer()
-            activation_id = int(query.data.split("_")[2])
-            context.user_data['cred_activation_id'] = activation_id
-            context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
-            activation = get_activation_by_id(activation_id)
-            if activation:
-                act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:17]
-                request_number = f"ST-{act_id:06d}"
-                current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
-                await query.message.reply_text(
-                    f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
-                    f"Или отправьте /cancel для отмены."
-                )
-                return WAITING_ADMIN_EMAIL
-        return ConversationHandler.END
-    
     admin_password_handler_conv = ConversationHandler(
-        entry_points=[
-            CommandHandler("admin", admin_command),
-            CallbackQueryHandler(add_cred_entry, pattern="^add_cred_")
-        ],
+        entry_points=[CommandHandler("admin", admin_command)],
         states={
             WAITING_ADMIN_PASSWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_password_handler)
@@ -853,7 +831,7 @@ def main():
         
         # Группа 0 для остальных обработчиков
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_)"))
+        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_)"))
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
         application.add_handler(activation_handler)
