@@ -947,7 +947,7 @@ async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_
         filename=filename
     )
     
-        os.remove(filename)
+    os.remove(filename)
 
 
 async def admin_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
