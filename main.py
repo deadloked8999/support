@@ -589,9 +589,19 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    init_database()
-    
-    application = Application.builder().token(BOT_TOKEN).build()
+    try:
+        print("Инициализация базы данных...")
+        init_database()
+        print("База данных инициализирована")
+        
+        print("Создание Application...")
+        application = Application.builder().token(BOT_TOKEN).build()
+        print("Application создан")
+    except Exception as e:
+        print(f"Ошибка при инициализации: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
     
     purchase_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_callback_buy, pattern="^buy$")],
@@ -687,24 +697,41 @@ def main():
             except Exception as e:
                 print(f"Ошибка обработки активации {act_id}: {e}")
     
-    job_queue = application.job_queue
-    if job_queue:
-        job_queue.run_repeating(check_subscriptions, interval=3600, first=10)
-    
-    # Группа -1 для команд (высший приоритет)
-    application.add_handler(CommandHandler("start", start), group=-1)
-    
-    # Группа 0 для остальных обработчиков
-    application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
-    application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_)"))
-    application.add_handler(admin_password_handler_conv)
-    application.add_handler(purchase_handler)
-    application.add_handler(activation_handler)
-    
-    print("Бот запущен...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        print("Настройка job_queue...")
+        job_queue = application.job_queue
+        if job_queue:
+            job_queue.run_repeating(check_subscriptions, interval=3600, first=10)
+        print("job_queue настроен")
+        
+        print("Регистрация обработчиков...")
+        # Группа -1 для команд (высший приоритет)
+        application.add_handler(CommandHandler("start", start), group=-1)
+        print("Обработчик /start зарегистрирован")
+        
+        # Группа 0 для остальных обработчиков
+        application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_)"))
+        application.add_handler(admin_password_handler_conv)
+        application.add_handler(purchase_handler)
+        application.add_handler(activation_handler)
+        print("Все обработчики зарегистрированы")
+        
+        print("Бот запущен...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        print(f"Ошибка при настройке обработчиков: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"КРИТИЧЕСКАЯ ОШИБКА при запуске бота: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
