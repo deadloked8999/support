@@ -20,6 +20,13 @@ else
     cd $BOT_DIR
 fi
 
+# Проверяем и устанавливаем python3-venv если нужно
+if ! dpkg -l | grep -q python3-venv; then
+    echo "📦 Устанавливаю python3-venv..."
+    apt-get update -qq
+    apt-get install -y python3-venv python3-pip
+fi
+
 # Создаем виртуальное окружение
 if [ ! -d "venv" ]; then
     echo "🐍 Создаю виртуальное окружение..."
