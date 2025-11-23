@@ -431,16 +431,15 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     payment = update.message.successful_payment
     user_id = update.effective_user.id
     
-    payment_info = (
-        f"✅ Платеж успешно получен!\n\n"
-        f"Сумма: {payment.total_amount / 1e9} {payment.currency}\n\n"
-        "Теперь введите KIT номер устройства (буквы и цифры):"
-    )
-    
     update_activation_receipt(user_id, payment.telegram_payment_charge_id)
     
-    await update.message.reply_text(payment_info)
-    return WAITING_KIT
+    await update.message.reply_text(
+        "✅ Платеж успешно получен!\n\n"
+        "Пожалуйста, ожидайте. ⏳\n\n"
+        "Мы свяжемся с вами в ближайшее время."
+    )
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -904,8 +903,7 @@ def main():
     
     activation_handler = ConversationHandler(
         entry_points=[
-            CallbackQueryHandler(button_callback_activate, pattern="^activate$"),
-            MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback)
+            CallbackQueryHandler(button_callback_activate, pattern="^activate$")
         ],
         states={
             WAITING_PHONE_ACTIVATE: [
@@ -996,6 +994,7 @@ def main():
         
         # Группа 0 для остальных обработчиков
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+        application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
         application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_)"))
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
