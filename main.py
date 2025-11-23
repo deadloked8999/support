@@ -545,6 +545,28 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    # Если это админ и он находится в админ ConversationHandler, возвращаем его в админ-панель
+    if is_admin(user_id):
+        # Создаем клавиатуру для возврата в админ-панель
+        keyboard = [
+            [KeyboardButton("🔍 Поиск заявки"), KeyboardButton("📊 Статистика")],
+            [KeyboardButton("🛒 Покупки"), KeyboardButton("⚙️ Активации")],
+            [KeyboardButton("📄 Экспорт в Excel")],
+            [KeyboardButton("✅ Отметить как обработанную"), KeyboardButton("✉️ Привязать Email/Пароль")],
+            [KeyboardButton("🚪 Выход из админ-панели")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+        
+        await update.message.reply_text(
+            "❌ Операция отменена.\n\n"
+            "🔐 Админ-панель\n\nВыберите действие:",
+            reply_markup=reply_markup
+        )
+        return ADMIN_PANEL_ACTIVE
+    
+    # Для обычных пользователей - обычная отмена
     await update.message.reply_text("Операция отменена.")
     context.user_data.clear()
     return ConversationHandler.END
@@ -680,7 +702,17 @@ async def admin_password_field_handler(update: Update, context: ContextTypes.DEF
         if activation:
             await show_activation_details(update, context, activation)
         
-        return ConversationHandler.END
+        # Возвращаемся в админ-панель
+        keyboard = [
+            [KeyboardButton("🔍 Поиск заявки"), KeyboardButton("📊 Статистика")],
+            [KeyboardButton("🛒 Покупки"), KeyboardButton("⚙️ Активации")],
+            [KeyboardButton("📄 Экспорт в Excel")],
+            [KeyboardButton("✅ Отметить как обработанную"), KeyboardButton("✉️ Привязать Email/Пароль")],
+            [KeyboardButton("🚪 Выход из админ-панели")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+        await update.message.reply_text("Админ-панель", reply_markup=reply_markup)
+        return ADMIN_PANEL_ACTIVE
     else:
         await update.message.reply_text(f"❌ Ошибка при сохранении данных.")
         context.user_data.pop('cred_activation_id', None)
@@ -1059,6 +1091,10 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
     
     text = update.message.text.strip()
+    
+    # Игнорируем команды
+    if text.startswith('/'):
+        return ConversationHandler.END
     
     # Создаем клавиатуру для возврата в админ-панель
     keyboard = [
@@ -1816,6 +1852,33 @@ def main():
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
         application.add_handler(activation_handler)
+        
+        # Обработчик текстовых сообщений админа вне ConversationHandler
+        # (для обработки кнопок клавиатуры после отмены или когда ConversationHandler не активен)
+        async def admin_standalone_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            """Обработчик текстовых сообщений админа вне ConversationHandler"""
+            user_id = update.effective_user.id
+            if not is_admin(user_id):
+                return
+            
+            # Игнорируем команды (они обрабатываются отдельно)
+            if not update.message or not update.message.text:
+                return
+            
+            text = update.message.text.strip()
+            if text.startswith('/'):
+                return
+            
+            # Обрабатываем текст как админ-панель
+            await admin_text_handler(update, context)
+        
+        # Добавляем в группу 1 (после ConversationHandler) с низким приоритетом
+        # Это позволит ConversationHandler обработать сообщение первым, если он активен
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            admin_standalone_text_handler
+        ), group=1)
+        
         print("Все обработчики зарегистрированы")
         
         print("Бот запущен...")
