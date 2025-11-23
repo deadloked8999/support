@@ -106,6 +106,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "С января 2024 команда RICH не имеет ни одного случая необратимой блокировки - "
             "все вопросы решаются в рабочем порядке.\n\n"
             "Каждый день на связи опытные специалисты, готовые реагировать мгновенно.\n\n"
+            "📢 Подписывайтесь на наш канал для получения актуальной информации:\n"
+            "https://t.me/sturmovoebratstvo\n\n"
             "Выберите нужное действие:"
         )
         
@@ -115,7 +117,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        await update.message.reply_text(
+            welcome_text, 
+            reply_markup=reply_markup,
+            disable_web_page_preview=False
+        )
         print(f"DEBUG: start message sent to user {update.effective_user.id}")
         
         # Останавливаем дальнейшую обработку
