@@ -980,7 +980,8 @@ def main():
         context.user_data.clear()
         query = update.callback_query
         await query.answer()
-        # Просто завершаем текущий процесс, новый начнется через entry_point
+        # Завершаем текущий процесс и запускаем обработчик активации вручную
+        await button_callback_activate(update, context)
         return ConversationHandler.END
     
     purchase_handler = ConversationHandler(
@@ -1006,7 +1007,8 @@ def main():
         context.user_data.clear()
         query = update.callback_query
         await query.answer()
-        # Просто завершаем текущий процесс, новый начнется через entry_point
+        # Завершаем текущий процесс и запускаем обработчик покупки вручную
+        await button_callback_buy(update, context)
         return ConversationHandler.END
     
     activation_handler = ConversationHandler(
