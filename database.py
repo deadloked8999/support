@@ -351,6 +351,117 @@ def get_activation_by_id(activation_id):
     return activation
 
 
+def find_activation_by_request_number(request_number):
+    """Ищет активацию по номеру заявки (ST-000001)"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    # Парсим номер заявки ST-000001 -> 1
+    try:
+        if request_number.upper().startswith('ST-'):
+            activation_id = int(request_number.upper().replace('ST-', ''))
+        else:
+            activation_id = int(request_number)
+        
+        cursor.execute('''
+            SELECT id, user_id, phone, name, username, created_at, payment_received, 
+                   receipt_file_id, serial_number, serial_photo_file_id, 
+                   box_serial_number, box_serial_photo_file_id, kit_number, 
+                   status, service_provided, service_provided_at, email, password
+            FROM activations
+            WHERE id = ?
+        ''', (activation_id,))
+        activation = cursor.fetchone()
+        conn.close()
+        return activation
+    except (ValueError, AttributeError):
+        conn.close()
+        return None
+
+
+def find_purchase_by_request_number(request_number):
+    """Ищет покупку по номеру заявки (BUY-000001)"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    # Парсим номер заявки BUY-000001 -> 1
+    try:
+        if request_number.upper().startswith('BUY-'):
+            purchase_id = int(request_number.upper().replace('BUY-', ''))
+        else:
+            purchase_id = int(request_number)
+        
+        cursor.execute('''
+            SELECT id, user_id, phone, name, username, created_at
+            FROM purchases
+            WHERE id = ?
+        ''', (purchase_id,))
+        purchase = cursor.fetchone()
+        conn.close()
+        return purchase
+    except (ValueError, AttributeError):
+        conn.close()
+        return None
+
+
+def delete_activation(activation_id):
+    """Удаляет активацию по ID"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM activations WHERE id = ?', (activation_id,))
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
+def delete_purchase(purchase_id):
+    """Удаляет покупку по ID"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM purchases WHERE id = ?', (purchase_id,))
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
+def toggle_service_provided(activation_id):
+    """Переключает статус service_provided (0->1 или 1->0)"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    # Получаем текущий статус
+    cursor.execute('SELECT service_provided FROM activations WHERE id = ?', (activation_id,))
+    result = cursor.fetchone()
+    if not result:
+        conn.close()
+        return False
+    
+    current_status = result[0]
+    new_status = 1 if current_status == 0 else 0
+    
+    if new_status == 1:
+        # Устанавливаем дату обработки
+        cursor.execute('''
+            UPDATE activations 
+            SET service_provided = 1, service_provided_at = ?
+            WHERE id = ?
+        ''', (datetime.now().isoformat(), activation_id))
+    else:
+        # Снимаем отметку
+        cursor.execute('''
+            UPDATE activations 
+            SET service_provided = 0, service_provided_at = NULL
+            WHERE id = ?
+        ''', (activation_id,))
+    
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
 def get_statistics():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()

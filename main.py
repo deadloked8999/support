@@ -37,6 +37,11 @@ from database import (
     get_activation_by_id,
     get_pending_activations,
     get_processed_activations,
+    find_activation_by_request_number,
+    find_purchase_by_request_number,
+    delete_activation,
+    delete_purchase,
+    toggle_service_provided,
 )
 from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PHONE, PROVIDER_TOKEN, ADMIN_IDS, ADMIN_PASSWORD, SERIAL_NUMBER_EXAMPLE
 
@@ -45,6 +50,8 @@ WAITING_PHONE_PURCHASE, WAITING_NAME_PURCHASE = range(2)
 WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_BOX_SERIAL, WAITING_BOX_SERIAL_PHOTO = range(5, 11)
 WAITING_ADMIN_PASSWORD = 15
 WAITING_ADMIN_SELECT_ACTIVATION, WAITING_ADMIN_EMAIL, WAITING_ADMIN_PASSWORD_FIELD = 16, 17, 18
+WAITING_ADMIN_SEARCH = 19
+WAITING_ADMIN_DELETE_CONFIRM = 20
 
 
 def normalize_phone(phone):
@@ -592,6 +599,7 @@ async def admin_password_handler(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data.pop('admin_auth', None)
     
     keyboard = [
+        [InlineKeyboardButton("🔍 Поиск заявки", callback_data="admin_search")],
         [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")],
         [InlineKeyboardButton("🛒 Покупки", callback_data="admin_purchases")],
         [InlineKeyboardButton("⚙️ Активации", callback_data="admin_activations")],
@@ -660,9 +668,7 @@ async def admin_password_field_handler(update: Update, context: ContextTypes.DEF
     if update_activation_email_password(activation_id, email, password):
         request_number = f"ST-{activation_id:06d}"
         await update.message.reply_text(
-            f"✅ Email и пароль успешно привязаны к заявке {request_number}!\n\n"
-            f"Email: {email}\n"
-            f"Пароль: {password}"
+            f"✅ Email и пароль успешно привязаны к заявке {request_number}!"
         )
         
         # НЕ отправляем пользователю email и пароль - это только для админа
@@ -670,6 +676,12 @@ async def admin_password_field_handler(update: Update, context: ContextTypes.DEF
         context.user_data.pop('cred_activation_id', None)
         context.user_data.pop('cred_email', None)
         context.user_data.pop('admin_cred_state', None)
+        
+        # Показываем обновленную заявку
+        activation = get_activation_by_id(activation_id)
+        if activation:
+            await show_activation_details(update, context, activation)
+        
         return ConversationHandler.END
     else:
         await update.message.reply_text(f"❌ Ошибка при сохранении данных.")
@@ -677,6 +689,311 @@ async def admin_password_field_handler(update: Update, context: ContextTypes.DEF
         context.user_data.pop('cred_email', None)
         context.user_data.pop('admin_cred_state', None)
         return ConversationHandler.END
+
+
+async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_TYPE, activation):
+    """Универсальная функция для показа детальной информации о заявке активации с кнопками редактирования"""
+    act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
+    request_number = f"ST-{act_id:06d}"
+    
+    text = f"📋 Детальная информация по заявке {request_number}\n\n"
+    text += f"🔹 ID заявки: {act_id}\n"
+    text += f"User ID: {uid}\n"
+    text += f"Username: @{username}\n" if username else "Username: не указан\n"
+    text += f"Имя: {name}\n"
+    text += f"Телефон: {phone}\n"
+    text += f"Дата создания: {created_at[:19]}\n"
+    text += f"Статус: {status}\n"
+    text += f"Оплата получена: {'✅ Да' if payment else '❌ Нет'}\n"
+    text += f"Услуга оказана: {'✅ Да' if service_provided else '❌ Нет'}\n"
+    
+    if service_provided_at:
+        start_date = datetime.fromisoformat(service_provided_at)
+        end_date = start_date + timedelta(days=30)
+        text += f"Дата начала активации: {service_provided_at[:19]}\n"
+        text += f"Дата окончания подписки: {end_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+    
+    text += f"\n📦 Данные устройства:\n"
+    text += f"SN устройство: {serial_num if serial_num else 'не указан'}\n"
+    text += f"SN коробка: {box_serial if box_serial else 'не указан'}\n"
+    if kit:
+        text += f"KIT номер: {kit}\n"
+    
+    if email:
+        text += f"\n📧 Email: {email}\n"
+    if password:
+        text += f"🔑 Пароль: {password}\n"
+    
+    # Кнопки редактирования
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("✏️ Редактировать Email/Пароль", callback_data=f"edit_cred_{act_id}")])
+    
+    if service_provided:
+        keyboard.append([InlineKeyboardButton("❌ Снять отметку об обработке", callback_data=f"toggle_status_{act_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("✅ Отметить как обработанную", callback_data=f"toggle_status_{act_id}")])
+    
+    keyboard.append([InlineKeyboardButton("🗑️ Удалить заявку", callback_data=f"delete_confirm_{act_id}")])
+    
+    # Определяем, откуда пришли (поиск или список)
+    back_to = context.user_data.get('admin_view_back_to', 'admin_activations')
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data=back_to)])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Если это query (callback), используем редактирование сообщения, иначе отправляем новое
+    if hasattr(update, 'callback_query') and update.callback_query:
+        await update.callback_query.message.reply_text(text, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+    
+    # Генерируем и отправляем Excel файл с данными заявки
+    if hasattr(update, 'callback_query') and update.callback_query:
+        await update.callback_query.message.reply_text("📄 Генерирую Excel файл...")
+    else:
+        await update.message.reply_text("📄 Генерирую Excel файл...")
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Активация"
+    
+    headers = ["Номер заявки", "User ID", "Username", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+               "SN устройство", "SN коробка", "KIT номер",
+               "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
+    ws.append(headers)
+    
+    # Форматирование заголовков
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Добавляем данные заявки
+    start_date_str = ""
+    end_date_str = ""
+    
+    if service_provided_at:
+        start_date = datetime.fromisoformat(service_provided_at)
+        end_date = start_date + timedelta(days=30)
+        start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+        end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
+    
+    ws.append([
+        request_number,
+        uid,
+        f"@{username}" if username else "",
+        phone,
+        name,
+        created_at[:19],
+        "Активация",
+        serial_num if serial_num else "",
+        box_serial if box_serial else "",
+        kit if kit else "",
+        start_date_str,
+        end_date_str,
+        email if email else "",
+        password if password else ""
+    ])
+    
+    # Автоматическая ширина столбцов
+    from openpyxl.utils import get_column_letter
+    for col_idx, header in enumerate(headers, start=1):
+        max_length = len(str(header))
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
+            cell = row[0]
+            if cell.value:
+                cell_value = str(cell.value)
+                max_length = max(max_length, len(cell_value))
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+    
+    filename = f"activation_{request_number}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    wb.save(filename)
+    
+    if hasattr(update, 'callback_query') and update.callback_query:
+        await update.callback_query.message.reply_document(
+            document=open(filename, 'rb'),
+            filename=filename
+        )
+    else:
+        await update.message.reply_document(
+            document=open(filename, 'rb'),
+            filename=filename
+        )
+    
+    os.remove(filename)
+
+
+async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_TYPE, activation):
+    """Универсальная функция для показа детальной информации о заявке активации с кнопками редактирования"""
+    act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
+    request_number = f"ST-{act_id:06d}"
+    
+    text = f"📋 Детальная информация по заявке {request_number}\n\n"
+    text += f"🔹 ID заявки: {act_id}\n"
+    text += f"User ID: {uid}\n"
+    username_str = f"@{username}" if username else "не указан"
+    text += f"Username: {username_str}\n"
+    text += f"Имя: {name}\n"
+    text += f"Телефон: {phone}\n"
+    text += f"Дата создания: {created_at[:19]}\n"
+    text += f"Статус: {status}\n"
+    text += f"Оплата получена: {'✅ Да' if payment else '❌ Нет'}\n"
+    text += f"Услуга оказана: {'✅ Да' if service_provided else '❌ Нет'}\n"
+    
+    if service_provided_at:
+        start_date = datetime.fromisoformat(service_provided_at)
+        end_date = start_date + timedelta(days=30)
+        text += f"Дата начала активации: {service_provided_at[:19]}\n"
+        text += f"Дата окончания подписки: {end_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+    
+    text += f"\n📦 Данные устройства:\n"
+    text += f"SN устройство: {serial_num if serial_num else 'не указан'}\n"
+    text += f"SN коробка: {box_serial if box_serial else 'не указан'}\n"
+    if kit:
+        text += f"KIT номер: {kit}\n"
+    
+    if email:
+        text += f"\n📧 Email: {email}\n"
+    if password:
+        text += f"🔑 Пароль: {password}\n"
+    
+    # Кнопки редактирования
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("✏️ Редактировать Email/Пароль", callback_data=f"edit_cred_{act_id}")])
+    
+    if service_provided:
+        keyboard.append([InlineKeyboardButton("❌ Снять отметку об обработке", callback_data=f"toggle_status_{act_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("✅ Отметить как обработанную", callback_data=f"toggle_status_{act_id}")])
+    
+    keyboard.append([InlineKeyboardButton("🗑️ Удалить заявку", callback_data=f"delete_confirm_{act_id}")])
+    
+    # Определяем, откуда пришли (поиск или список)
+    back_to = context.user_data.get('admin_view_back_to', 'admin_activations')
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data=back_to)])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Если это query (callback), используем редактирование сообщения, иначе отправляем новое
+    if hasattr(update, 'callback_query') and update.callback_query:
+        query = update.callback_query
+        await query.message.reply_text(text, reply_markup=reply_markup)
+        msg_for_excel = query.message
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup)
+        msg_for_excel = update.message
+    
+    # Генерируем и отправляем Excel файл с данными заявки
+    await msg_for_excel.reply_text("📄 Генерирую Excel файл...")
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Активация"
+    
+    headers = ["Номер заявки", "User ID", "Username", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+               "SN устройство", "SN коробка", "KIT номер",
+               "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
+    ws.append(headers)
+    
+    # Форматирование заголовков
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal='center')
+    
+    # Добавляем данные заявки
+    start_date_str = ""
+    end_date_str = ""
+    
+    if service_provided_at:
+        start_date = datetime.fromisoformat(service_provided_at)
+        end_date = start_date + timedelta(days=30)
+        start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+        end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
+    
+    ws.append([
+        request_number,
+        uid,
+        f"@{username}" if username else "",
+        phone,
+        name,
+        created_at[:19],
+        "Активация",
+        serial_num if serial_num else "",
+        box_serial if box_serial else "",
+        kit if kit else "",
+        start_date_str,
+        end_date_str,
+        email if email else "",
+        password if password else ""
+    ])
+    
+    # Автоматическая ширина столбцов
+    from openpyxl.utils import get_column_letter
+    for col_idx, header in enumerate(headers, start=1):
+        max_length = len(str(header))
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
+            cell = row[0]
+            if cell.value:
+                cell_value = str(cell.value)
+                max_length = max(max_length, len(cell_value))
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+    
+    filename = f"activation_{request_number}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    wb.save(filename)
+    
+    await msg_for_excel.reply_document(
+        document=open(filename, 'rb'),
+        filename=filename
+    )
+    
+        os.remove(filename)
+
+
+async def admin_search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик поиска заявки по номеру"""
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        return ConversationHandler.END
+    
+    request_number = update.message.text.strip().upper()
+    
+    # Ищем активацию
+    activation = find_activation_by_request_number(request_number)
+    if activation:
+        context.user_data['admin_view_back_to'] = 'admin_search_back'
+        await show_activation_details(update, context, activation)
+        return ConversationHandler.END
+    
+    # Ищем покупку
+    purchase = find_purchase_by_request_number(request_number)
+    if purchase:
+        pur_id, uid, phone, name, username, created_at = purchase
+        request_number_formatted = f"BUY-{pur_id:06d}"
+        text = f"📋 Детальная информация по заявке {request_number_formatted}\n\n"
+        text += f"🔹 ID заявки: {pur_id}\n"
+        text += f"User ID: {uid}\n"
+        username_str = f"@{username}" if username else "не указан"
+        text += f"Username: {username_str}\n"
+        text += f"Имя: {name}\n"
+        text += f"Телефон: {phone}\n"
+        text += f"Дата создания: {created_at[:19]}\n"
+        
+        keyboard = [
+            [InlineKeyboardButton("🗑️ Удалить заявку", callback_data=f"delete_purchase_{pur_id}")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="admin_search_back")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(text, reply_markup=reply_markup)
+        return ConversationHandler.END
+    
+    # Не найдено
+    await update.message.reply_text(
+        f"❌ Заявка с номером {request_number} не найдена.\n\n"
+        f"Попробуйте еще раз или отправьте /cancel для отмены."
+    )
+    return WAITING_ADMIN_SEARCH
 
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1005,109 +1322,73 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("❌ Заявка не найдена.")
             return
         
-        act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
-        request_number = f"ST-{act_id:06d}"
-        
-        text = f"📋 Детальная информация по заявке {request_number}\n\n"
-        text += f"🔹 ID заявки: {act_id}\n"
-        text += f"User ID: {uid}\n"
-        text += f"Username: @{username}\n" if username else "Username: не указан\n"
-        text += f"Имя: {name}\n"
-        text += f"Телефон: {phone}\n"
-        text += f"Дата создания: {created_at[:19]}\n"
-        text += f"Статус: {status}\n"
-        text += f"Оплата получена: {'✅ Да' if payment else '❌ Нет'}\n"
-        text += f"Услуга оказана: {'✅ Да' if service_provided else '❌ Нет'}\n"
-        
-        if service_provided_at:
-            start_date = datetime.fromisoformat(service_provided_at)
-            end_date = start_date + timedelta(days=30)
-            text += f"Дата начала активации: {service_provided_at[:19]}\n"
-            text += f"Дата окончания подписки: {end_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        
-        text += f"\n📦 Данные устройства:\n"
-        text += f"SN устройство: {serial_num if serial_num else 'не указан'}\n"
-        text += f"SN коробка: {box_serial if box_serial else 'не указан'}\n"
-        if kit:
-            text += f"KIT номер: {kit}\n"
-        
-        if email:
-            text += f"\n📧 Email: {email}\n"
-        if password:
-            text += f"🔑 Пароль: {password}\n"
-        
-        # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад к списку", callback_data="admin_activations")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.message.reply_text(text, reply_markup=reply_markup)
-        
-        # Генерируем и отправляем Excel файл с данными заявки
-        await query.message.reply_text("📄 Генерирую Excel файл...")
-        
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Активация"
-        
-        headers = ["Номер заявки", "User ID", "Username", "Номер телефона", "Имя", "Дата заявки", "Услуга",
-                   "SN устройство", "SN коробка", "KIT номер",
-                   "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
-        ws.append(headers)
-        
-        # Форматирование заголовков
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal='center')
-        
-        # Добавляем данные заявки
-        start_date_str = ""
-        end_date_str = ""
-        
-        if service_provided_at:
-            start_date = datetime.fromisoformat(service_provided_at)
-            end_date = start_date + timedelta(days=30)
-            start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
-            end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
-        
-        ws.append([
-            request_number,
-            uid,
-            f"@{username}" if username else "",
-            phone,
-            name,
-            created_at[:19],
-            "Активация",
-            serial_num if serial_num else "",
-            box_serial if box_serial else "",
-            kit if kit else "",
-            start_date_str,
-            end_date_str,
-            email if email else "",
-            password if password else ""
-        ])
-        
-        # Автоматическая ширина столбцов
-        from openpyxl.utils import get_column_letter
-        for col_idx, header in enumerate(headers, start=1):
-            max_length = len(str(header))
-            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
-                cell = row[0]
-                if cell.value:
-                    cell_value = str(cell.value)
-                    max_length = max(max_length, len(cell_value))
-            # Устанавливаем ширину: длина контента + небольшой отступ, но не более 50 символов
-            col_letter = get_column_letter(col_idx)
-            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
-        
-        filename = f"activation_{request_number}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
-        
-        await query.message.reply_document(
-            document=open(filename, 'rb'),
-            filename=filename
-        )
-        
-        os.remove(filename)
+        # Сохраняем откуда пришли для кнопки "Назад" (если не установлено)
+        if 'admin_view_back_to' not in context.user_data:
+            context.user_data['admin_view_back_to'] = "admin_activations"
+        await show_activation_details(update, context, activation)
+    
+    elif query.data.startswith("edit_cred_"):
+        activation_id = int(query.data.split("_")[2])
+        context.user_data['cred_activation_id'] = activation_id
+        context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
+        activation = get_activation_by_id(activation_id)
+        if activation:
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
+            request_number = f"ST-{act_id:06d}"
+            current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
+            await query.message.reply_text(
+                f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
+                f"Или отправьте /cancel для отмены."
+            )
+        return WAITING_ADMIN_EMAIL
+    
+    elif query.data.startswith("toggle_status_"):
+        activation_id = int(query.data.split("_")[2])
+        if toggle_service_provided(activation_id):
+            # Обновляем вид заявки
+            activation = get_activation_by_id(activation_id)
+            if activation:
+                status_text = "отмечена как обработанная" if activation[14] else "отметка снята"
+                request_number = f"ST-{activation[0]:06d}"
+                await query.message.reply_text(f"✅ Заявка {request_number} {status_text}.")
+                # Показываем обновленную заявку
+                context.user_data['admin_view_back_to'] = context.user_data.get('admin_view_back_to', 'admin_activations')
+                await show_activation_details(update, context, activation)
+        else:
+            await query.message.reply_text(f"❌ Ошибка при изменении статуса заявки.")
+    
+    elif query.data.startswith("delete_confirm_"):
+        activation_id = int(query.data.split("_")[2])
+        activation = get_activation_by_id(activation_id)
+        if activation:
+            act_id = activation[0]
+            request_number = f"ST-{act_id:06d}"
+            keyboard = [
+                [InlineKeyboardButton("✅ Да, удалить", callback_data=f"delete_yes_{act_id}")],
+                [InlineKeyboardButton("❌ Отмена", callback_data=f"view_activation_{act_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.reply_text(
+                f"⚠️ Вы уверены, что хотите удалить заявку {request_number}?\n\n"
+                f"Это действие нельзя отменить!",
+                reply_markup=reply_markup
+            )
+    
+    elif query.data.startswith("delete_yes_"):
+        activation_id = int(query.data.split("_")[2])
+        request_number = f"ST-{activation_id:06d}"
+        if delete_activation(activation_id):
+            await query.message.reply_text(f"✅ Заявка {request_number} успешно удалена.")
+        else:
+            await query.message.reply_text(f"❌ Ошибка при удалении заявки {request_number}.")
+    
+    elif query.data.startswith("delete_purchase_"):
+        purchase_id = int(query.data.split("_")[2])
+        request_number = f"BUY-{purchase_id:06d}"
+        if delete_purchase(purchase_id):
+            await query.message.reply_text(f"✅ Заявка {request_number} успешно удалена.")
+        else:
+            await query.message.reply_text(f"❌ Ошибка при удалении заявки {request_number}.")
     
     elif query.data == "admin_exit":
         welcome_text = (
@@ -1239,6 +1520,9 @@ def main():
             WAITING_ADMIN_PASSWORD_FIELD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_password_field_handler)
             ],
+            WAITING_ADMIN_SEARCH: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_search_handler)
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -1289,7 +1573,7 @@ def main():
         # Группа 0 для остальных обработчиков
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
         application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_|view_activation_)"))
+        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_|view_activation_|edit_cred_|toggle_status_|delete_confirm_|delete_yes_|delete_purchase_|admin_search_back)"))
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
         application.add_handler(activation_handler)
