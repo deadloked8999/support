@@ -745,10 +745,12 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "📋 Детальная информация по активациям:\n\n"
         for act in activations[:10]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:16]
+            username_str = f"@{username}" if username else "не указан"
             text += (
                 f"🔹 ID заявки: {act_id}\n"
                 f"User ID: {uid}\n"
+                f"Username: {username_str}\n"
                 f"Имя: {name}\n"
                 f"Телефон: {phone}\n"
                 f"Статус: {status}\n"
