@@ -2,7 +2,7 @@ import re
 import uuid
 import os
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
 from telegram.ext import (
@@ -52,6 +52,7 @@ WAITING_ADMIN_PASSWORD = 15
 WAITING_ADMIN_SELECT_ACTIVATION, WAITING_ADMIN_EMAIL, WAITING_ADMIN_PASSWORD_FIELD = 16, 17, 18
 WAITING_ADMIN_SEARCH = 19
 WAITING_ADMIN_DELETE_CONFIRM = 20
+ADMIN_PANEL_ACTIVE = 21
 
 
 def normalize_phone(phone):
@@ -598,24 +599,21 @@ async def admin_password_handler(update: Update, context: ContextTypes.DEFAULT_T
     
     context.user_data.pop('admin_auth', None)
     
+    # Создаем обычную клавиатуру для админ-панели
     keyboard = [
-        [InlineKeyboardButton("🔍 Поиск заявки", callback_data="admin_search")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")],
-        [InlineKeyboardButton("🛒 Покупки", callback_data="admin_purchases")],
-        [InlineKeyboardButton("⚙️ Активации", callback_data="admin_activations")],
-        [InlineKeyboardButton("📋 Активации (детально)", callback_data="admin_activations_detail")],
-        [InlineKeyboardButton("📄 Экспорт в Excel", callback_data="admin_export_excel")],
-        [InlineKeyboardButton("✅ Отметить как обработанную", callback_data="admin_mark_processed")],
-        [InlineKeyboardButton("✉️ Привязать Email/Пароль", callback_data="admin_add_credentials")],
-        [InlineKeyboardButton("🚪 Выход из админ-панели", callback_data="admin_exit")]
+        [KeyboardButton("🔍 Поиск заявки"), KeyboardButton("📊 Статистика")],
+        [KeyboardButton("🛒 Покупки"), KeyboardButton("⚙️ Активации")],
+        [KeyboardButton("📄 Экспорт в Excel")],
+        [KeyboardButton("✅ Отметить как обработанную"), KeyboardButton("✉️ Привязать Email/Пароль")],
+        [KeyboardButton("🚪 Выход из админ-панели")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
     await update.message.reply_text(
         "🔐 Админ-панель\n\nВыберите действие:",
         reply_markup=reply_markup
     )
-    return ConversationHandler.END
+    return ADMIN_PANEL_ACTIVE
 
 
 async def admin_email_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1053,6 +1051,227 @@ async def admin_start_fallback(update: Update, context: ContextTypes.DEFAULT_TYP
     return ConversationHandler.END
 
 
+async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстовых сообщений с кнопками админ-панели"""
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        return ConversationHandler.END
+    
+    text = update.message.text.strip()
+    
+    # Создаем клавиатуру для возврата в админ-панель
+    keyboard = [
+        [KeyboardButton("🔍 Поиск заявки"), KeyboardButton("📊 Статистика")],
+        [KeyboardButton("🛒 Покупки"), KeyboardButton("⚙️ Активации")],
+        [KeyboardButton("📄 Экспорт в Excel")],
+        [KeyboardButton("✅ Отметить как обработанную"), KeyboardButton("✉️ Привязать Email/Пароль")],
+        [KeyboardButton("🚪 Выход из админ-панели")]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    
+    if text == "🔍 Поиск заявки":
+        context.user_data['admin_search_mode'] = True
+        await update.message.reply_text(
+            "🔍 Введите номер заявки для поиска:\n\n"
+            "Формат: ST-000001 (для активаций) или BUY-000001 (для покупок)\n\n"
+            "Или отправьте /cancel для отмены.",
+            reply_markup=reply_markup
+        )
+        return WAITING_ADMIN_SEARCH
+    
+    elif text == "📊 Статистика":
+        stats = get_statistics()
+        text_msg = (
+            f"📊 Статистика\n\n"
+            f"🛒 Всего покупок: {stats['total_purchases']}\n"
+            f"⚙️ Всего активаций: {stats['total_activations']}\n\n"
+            f"⏳ Ожидают оплаты: {stats['pending_activations']}\n"
+            f"💳 Оплата подтверждена: {stats['payment_confirmed']}\n"
+            f"✅ Завершено: {stats['completed_activations']}"
+        )
+        await update.message.reply_text(text_msg, reply_markup=reply_markup)
+        return ADMIN_PANEL_ACTIVE
+    
+    elif text == "🛒 Покупки":
+        purchases = get_all_purchases()
+        if not purchases:
+            await update.message.reply_text("📭 Покупок пока нет.", reply_markup=reply_markup)
+            return ADMIN_PANEL_ACTIVE
+        
+        text_msg = "🛒 Все покупки:\n\n"
+        for purchase in purchases[:20]:
+            purchase_id, uid, phone, name, username, created_at = purchase[:6]
+            username_str = f"@{username}" if username else "не указан"
+            text_msg += (
+                f"ID: {purchase_id}\n"
+                f"User ID: {uid}\n"
+                f"Username: {username_str}\n"
+                f"Имя: {name}\n"
+                f"Телефон: {phone}\n"
+                f"Дата: {created_at[:19]}\n"
+                f"{'─' * 30}\n"
+            )
+        
+        if len(purchases) > 20:
+            text_msg += f"\n... и еще {len(purchases) - 20} записей"
+        
+        await update.message.reply_text(text_msg, reply_markup=reply_markup)
+        return ADMIN_PANEL_ACTIVE
+    
+    elif text == "⚙️ Активации":
+        # Показываем две кнопки: Ожидают и Обработанные
+        keyboard_inline = [
+            [InlineKeyboardButton("⏳ Ожидают", callback_data="admin_activations_pending_page_0")],
+            [InlineKeyboardButton("✅ Обработанные", callback_data="admin_activations_processed_page_0")]
+        ]
+        reply_markup_inline = InlineKeyboardMarkup(keyboard_inline)
+        await update.message.reply_text(
+            "⚙️ Выберите категорию активаций:",
+            reply_markup=reply_markup_inline
+        )
+        return ADMIN_PANEL_ACTIVE
+    
+    elif text == "📄 Экспорт в Excel":
+        await update.message.reply_text("📄 Генерирую Excel файл...", reply_markup=reply_markup)
+        activations = get_all_activations()
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Активации"
+        
+        headers = ["Номер заявки", "User ID", "Username", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+                   "SN устройство", "SN коробка", "KIT номер",
+                   "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
+        ws.append(headers)
+        
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+        
+        for act in activations:
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
+            
+            request_number = f"ST-{act_id:06d}"
+            start_date_str = ""
+            end_date_str = ""
+            
+            if service_provided_at:
+                start_date = datetime.fromisoformat(service_provided_at)
+                end_date = start_date + timedelta(days=30)
+                start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+                end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
+            
+            ws.append([
+                request_number,
+                uid,
+                f"@{username}" if username else "",
+                phone,
+                name,
+                created_at[:19],
+                "Активация",
+                serial_num if serial_num else "",
+                box_serial if box_serial else "",
+                kit if kit else "",
+                start_date_str,
+                end_date_str,
+                email if email else "",
+                password if password else ""
+            ])
+        
+        # Автоматическая ширина столбцов
+        from openpyxl.utils import get_column_letter
+        for col_idx, header in enumerate(headers, start=1):
+            max_length = len(str(header))
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
+                cell = row[0]
+                if cell.value:
+                    cell_value = str(cell.value)
+                    max_length = max(max_length, len(cell_value))
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+        
+        filename = f"activations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        wb.save(filename)
+        
+        await update.message.reply_document(
+            document=open(filename, 'rb'),
+            filename=filename,
+            reply_markup=reply_markup
+        )
+        
+        os.remove(filename)
+        return ADMIN_PANEL_ACTIVE
+    
+    elif text == "✅ Отметить как обработанную":
+        activations = get_all_activations()
+        if not activations:
+            await update.message.reply_text("📭 Активаций пока нет.", reply_markup=reply_markup)
+            return ADMIN_PANEL_ACTIVE
+        
+        buttons = []
+        for act in activations[:50]:
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
+            if not service_provided:
+                request_number = f"ST-{act_id:06d}"
+                buttons.append([InlineKeyboardButton(
+                    f"{request_number}: {name} ({phone})",
+                    callback_data=f"mark_{act_id}"
+                )])
+        
+        if not buttons:
+            await update.message.reply_text("✅ Все заявки уже обработаны.", reply_markup=reply_markup)
+            return ADMIN_PANEL_ACTIVE
+        
+        reply_markup_inline = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            "Выберите заявку для отметки как обработанную:",
+            reply_markup=reply_markup_inline
+        )
+        return ADMIN_PANEL_ACTIVE
+    
+    elif text == "✉️ Привязать Email/Пароль":
+        activations = get_all_activations()
+        if not activations:
+            await update.message.reply_text("📭 Активаций пока нет.", reply_markup=reply_markup)
+            return ADMIN_PANEL_ACTIVE
+        
+        buttons = []
+        for act in activations[:50]:
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
+            request_number = f"ST-{act_id:06d}"
+            buttons.append([InlineKeyboardButton(
+                f"{request_number}: {name} ({phone})" + (" ✉️" if email else ""),
+                callback_data=f"add_cred_{act_id}"
+            )])
+        
+        reply_markup_inline = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            "Выберите заявку для привязки email и пароля:",
+            reply_markup=reply_markup_inline
+        )
+        return ADMIN_PANEL_ACTIVE
+    
+    elif text == "🚪 Выход из админ-панели":
+        welcome_text = (
+            "👋 Вы вышли из админ-панели.\n\n"
+            "Добро пожаловать! 👋\n\n"
+            "Это техподдержка по активации терминалов Starlink. "
+            "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
+            "Выберите нужное действие:"
+        )
+        
+        keyboard_inline = [
+            [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
+            [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
+        ]
+        reply_markup_inline = InlineKeyboardMarkup(keyboard_inline)
+        
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup_inline)
+        await update.message.reply_text("Клавиатура удалена", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1110,42 +1329,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚙️ Выберите категорию активаций:",
             reply_markup=reply_markup
         )
-    
-    elif query.data == "admin_activations_detail":
-        activations = get_all_activations()
-        if not activations:
-            await query.message.reply_text("📭 Активаций пока нет.")
-            return
-        
-        text = "📋 Детальная информация по активациям:\n\n"
-        for act in activations[:10]:
-            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:16]
-            username_str = f"@{username}" if username else "не указан"
-            text += (
-                f"🔹 ID заявки: {act_id}\n"
-                f"User ID: {uid}\n"
-                f"Username: {username_str}\n"
-                f"Имя: {name}\n"
-                f"Телефон: {phone}\n"
-                f"Статус: {status}\n"
-                f"Оплата получена: {'Да' if payment else 'Нет'}\n"
-                f"SN устройство: {serial_num if serial_num else 'не указан'}\n"
-                f"SN коробка: {box_serial if box_serial else 'не указан'}\n"
-                f"KIT номер: {kit if kit else 'не указан'}\n"
-                f"Услуга оказана: {'✅ Да' if service_provided else '❌ Нет'}\n"
-                f"Дата создания: {created_at[:19]}\n"
-            )
-            if service_provided_at:
-                start_date = datetime.fromisoformat(service_provided_at)
-                end_date = start_date + timedelta(days=30)
-                text += f"Дата начала активации: {service_provided_at[:19]}\n"
-                text += f"Дата окончания подписки: {end_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            text += f"{'═' * 35}\n"
-        
-        if len(activations) > 10:
-            text += f"\n... и еще {len(activations) - 10} записей"
-        
-        await query.message.reply_text(text)
     
     elif query.data == "admin_export_excel":
         await query.message.reply_text("📄 Генерирую Excel файл...")
@@ -1572,6 +1755,9 @@ def main():
             ],
             WAITING_ADMIN_SEARCH: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_search_handler)
+            ],
+            ADMIN_PANEL_ACTIVE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_handler)
             ],
         },
         fallbacks=[
