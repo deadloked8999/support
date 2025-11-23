@@ -1033,6 +1033,72 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.message.reply_text(text, reply_markup=reply_markup)
+        
+        # Генерируем и отправляем Excel файл с данными заявки
+        await query.message.reply_text("📄 Генерирую Excel файл...")
+        
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Активация"
+        
+        headers = ["Номер заявки", "User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+                   "SN устройство", "SN коробка", "KIT номер",
+                   "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
+        ws.append(headers)
+        
+        # Форматирование заголовков
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment(horizontal='center')
+        
+        # Добавляем данные заявки
+        start_date_str = ""
+        end_date_str = ""
+        
+        if service_provided_at:
+            start_date = datetime.fromisoformat(service_provided_at)
+            end_date = start_date + timedelta(days=30)
+            start_date_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+            end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
+        
+        ws.append([
+            request_number,
+            uid,
+            phone,
+            name,
+            created_at[:19],
+            "Активация",
+            serial_num if serial_num else "",
+            box_serial if box_serial else "",
+            kit if kit else "",
+            start_date_str,
+            end_date_str,
+            email if email else "",
+            password if password else ""
+        ])
+        
+        # Автоматическая ширина столбцов
+        from openpyxl.utils import get_column_letter
+        for col_idx, header in enumerate(headers, start=1):
+            max_length = len(str(header))
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
+                cell = row[0]
+                if cell.value:
+                    cell_value = str(cell.value)
+                    max_length = max(max_length, len(cell_value))
+            # Устанавливаем ширину: длина контента + небольшой отступ, но не более 50 символов
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+        
+        filename = f"activation_{request_number}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        wb.save(filename)
+        
+        await query.message.reply_document(
+            document=open(filename, 'rb'),
+            filename=filename
+        )
+        
+        os.remove(filename)
     
     elif query.data == "admin_exit":
         welcome_text = (
