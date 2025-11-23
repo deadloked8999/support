@@ -1532,6 +1532,25 @@ def main():
                     return WAITING_ADMIN_EMAIL
         return None
     
+    async def admin_start_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Fallback для /start в админ ConversationHandler"""
+        context.user_data.clear()
+        welcome_text = (
+            "Добро пожаловать! 👋\n\n"
+            "Это техподдержка по активации терминалов Starlink. "
+            "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
+            "Выберите нужное действие:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
+            [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        return ConversationHandler.END
+    
     admin_password_handler_conv = ConversationHandler(
         entry_points=[
             CommandHandler("admin", admin_command),
@@ -1552,7 +1571,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_search_handler)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", admin_start_fallback)
+        ],
     )
     
     async def check_subscriptions(context: ContextTypes.DEFAULT_TYPE):
