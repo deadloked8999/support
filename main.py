@@ -290,8 +290,14 @@ async def handle_serial_number(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     update_activation_serial_number(user_id, serial_number)
     
+    keyboard = [
+        [InlineKeyboardButton("⏭️ Пропустить фото", callback_data="skip_serial_photo")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        "Теперь отправьте фото серийного номера:"
+        "Теперь отправьте фото серийного номера:",
+        reply_markup=reply_markup
     )
     return WAITING_SERIAL_PHOTO
 
@@ -352,6 +358,61 @@ async def handle_serial_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
     return WAITING_BOX_SERIAL
 
 
+async def skip_serial_photo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик пропуска фото серийного номера устройства"""
+    query = update.callback_query
+    await query.answer()
+    
+    warning_text = (
+        "⚠️ <b>Внимание!</b>\n\n"
+        "Вы пропустили отправку фото серийного номера устройства.\n\n"
+        "Если серийный номер будет указан неверно, вся ответственность за это ложится на вас.\n\n"
+        "Продолжаем без фото..."
+    )
+    
+    await query.message.reply_text(warning_text, parse_mode='HTML')
+    
+    # Продолжаем процесс - запрашиваем серийный номер с коробки
+    message_text = (
+        "А также серийный номер с коробки терминала (написан после букв SN) + его фото, "
+        "прилагаем пример:"
+    )
+    
+    photo_path_jpg = os.path.join(os.path.dirname(__file__), "images", "serial_number_box_example.jpg")
+    photo_path_png = os.path.join(os.path.dirname(__file__), "images", "serial_number_box_example.png")
+    
+    photo_sent = False
+    if os.path.exists(photo_path_jpg):
+        try:
+            with open(photo_path_jpg, 'rb') as photo:
+                await query.message.reply_photo(
+                    photo=photo,
+                    caption=message_text
+                )
+            photo_sent = True
+        except Exception as e:
+            print(f"Ошибка отправки фото JPG: {e}")
+    
+    if not photo_sent and os.path.exists(photo_path_png):
+        try:
+            with open(photo_path_png, 'rb') as photo:
+                await query.message.reply_photo(
+                    photo=photo,
+                    caption=message_text
+                )
+            photo_sent = True
+        except Exception as e:
+            print(f"Ошибка отправки фото PNG: {e}")
+    
+    if not photo_sent:
+        await query.message.reply_text(message_text)
+    
+    await query.message.reply_text(
+        "Пожалуйста, введите серийный номер с коробки (SN):"
+    )
+    return WAITING_BOX_SERIAL
+
+
 async def handle_serial_photo_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Пожалуйста, отправьте фото серийного номера (фото или документ). "
@@ -374,10 +435,35 @@ async def handle_box_serial_number(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
     update_activation_box_serial_number(user_id, box_serial_number)
     
+    keyboard = [
+        [InlineKeyboardButton("⏭️ Пропустить фото", callback_data="skip_box_photo")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        "Теперь отправьте фото серийного номера с коробки:"
+        "Теперь отправьте фото серийного номера с коробки:",
+        reply_markup=reply_markup
     )
     return WAITING_BOX_SERIAL_PHOTO
+
+
+async def skip_box_photo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик пропуска фото серийного номера коробки"""
+    query = update.callback_query
+    await query.answer()
+    
+    warning_text = (
+        "⚠️ <b>Внимание!</b>\n\n"
+        "Вы пропустили отправку фото серийного номера с коробки.\n\n"
+        "Если серийные номера будут указаны неверно, вся ответственность за это ложится на вас.\n\n"
+        "✅ Все данные получены!\n\n"
+        "Пожалуйста, ожидайте. ⏳\n\n"
+        "Мы свяжемся с вами в ближайшее время."
+    )
+    
+    await query.message.reply_text(warning_text, parse_mode='HTML')
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 async def handle_box_serial_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -920,6 +1006,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_serial_number)
             ],
             WAITING_SERIAL_PHOTO: [
+                CallbackQueryHandler(skip_serial_photo_callback, pattern="^skip_serial_photo$"),
                 MessageHandler(filters.PHOTO | filters.Document.ALL, handle_serial_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_serial_photo_text)
             ],
@@ -927,6 +1014,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_box_serial_number)
             ],
             WAITING_BOX_SERIAL_PHOTO: [
+                CallbackQueryHandler(skip_box_photo_callback, pattern="^skip_box_photo$"),
                 MessageHandler(filters.PHOTO | filters.Document.ALL, handle_box_serial_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_box_serial_photo_text)
             ],
