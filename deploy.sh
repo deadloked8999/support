@@ -67,6 +67,20 @@ EOF
 # Перезагружаем systemd
 systemctl daemon-reload
 
+# Создаем директорию для бэкапов
+mkdir -p $BOT_DIR/backups
+
+# Копируем и настраиваем скрипт бэкапа
+if [ -f "$BOT_DIR/backup.sh" ]; then
+    chmod +x $BOT_DIR/backup.sh
+else
+    echo "⚠️ Скрипт backup.sh не найден. Создайте его вручную."
+fi
+
+# Настраиваем cron для ежедневного бэкапа в 2:00 ночи
+CRON_JOB="0 2 * * * $BOT_DIR/backup.sh >> $BOT_DIR/logs/backup_cron.log 2>&1"
+(crontab -l 2>/dev/null | grep -v "$BOT_DIR/backup.sh"; echo "$CRON_JOB") | crontab -
+
 echo "✅ Бот установлен!"
 echo ""
 echo "Для запуска бота:"
