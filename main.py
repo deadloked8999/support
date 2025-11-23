@@ -1328,19 +1328,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_activation_details(update, context, activation)
     
     elif query.data.startswith("edit_cred_"):
-        activation_id = int(query.data.split("_")[2])
-        context.user_data['cred_activation_id'] = activation_id
-        context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
-        activation = get_activation_by_id(activation_id)
-        if activation:
-            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
-            request_number = f"ST-{act_id:06d}"
-            current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
-            await query.message.reply_text(
-                f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
-                f"Или отправьте /cancel для отмены."
-            )
-        return WAITING_ADMIN_EMAIL
+        # Это теперь обрабатывается через entry point ConversationHandler
+        pass
     
     elif query.data.startswith("toggle_status_"):
         activation_id = int(query.data.split("_")[2])
@@ -1508,8 +1497,47 @@ def main():
         allow_reentry=True,
     )
     
+    async def admin_search_callback_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Entry point для поиска из CallbackQuery"""
+        if update.callback_query and update.callback_query.data == "admin_search":
+            user_id = update.effective_user.id
+            if is_admin(user_id):
+                await update.callback_query.answer()
+                await update.callback_query.message.reply_text(
+                    "🔍 Введите номер заявки для поиска:\n\n"
+                    "Формат: ST-000001 (для активаций) или BUY-000001 (для покупок)\n\n"
+                    "Или отправьте /cancel для отмены."
+                )
+                return WAITING_ADMIN_SEARCH
+        return None
+    
+    async def admin_edit_callback_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Entry point для редактирования email/пароля из CallbackQuery"""
+        if update.callback_query and update.callback_query.data and update.callback_query.data.startswith("edit_cred_"):
+            user_id = update.effective_user.id
+            if is_admin(user_id):
+                await update.callback_query.answer()
+                activation_id = int(update.callback_query.data.split("_")[2])
+                context.user_data['cred_activation_id'] = activation_id
+                context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
+                activation = get_activation_by_id(activation_id)
+                if activation:
+                    act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
+                    request_number = f"ST-{act_id:06d}"
+                    current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
+                    await update.callback_query.message.reply_text(
+                        f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
+                        f"Или отправьте /cancel для отмены."
+                    )
+                    return WAITING_ADMIN_EMAIL
+        return None
+    
     admin_password_handler_conv = ConversationHandler(
-        entry_points=[CommandHandler("admin", admin_command)],
+        entry_points=[
+            CommandHandler("admin", admin_command),
+            CallbackQueryHandler(admin_search_callback_entry, pattern="^admin_search$"),
+            CallbackQueryHandler(admin_edit_callback_entry, pattern="^edit_cred_")
+        ],
         states={
             WAITING_ADMIN_PASSWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_password_handler)
@@ -1573,7 +1601,7 @@ def main():
         # Группа 0 для остальных обработчиков
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
         application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_|view_activation_|edit_cred_|toggle_status_|delete_confirm_|delete_yes_|delete_purchase_|admin_search_back)"))
+        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_(?!search)|mark_|add_cred_|view_activation_|toggle_status_|delete_confirm_|delete_yes_|delete_purchase_|admin_search_back)"))
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
         application.add_handler(activation_handler)
