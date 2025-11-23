@@ -40,21 +40,40 @@ from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PH
 
 
 WAITING_PHONE_PURCHASE, WAITING_NAME_PURCHASE = range(2)
-WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_BOX_SERIAL, WAITING_BOX_SERIAL_PHOTO, WAITING_KIT = range(5, 12)
+WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_BOX_SERIAL, WAITING_BOX_SERIAL_PHOTO = range(5, 11)
 WAITING_ADMIN_PASSWORD = 15
 WAITING_ADMIN_SELECT_ACTIVATION, WAITING_ADMIN_EMAIL, WAITING_ADMIN_PASSWORD_FIELD = 16, 17, 18
 
 
 def normalize_phone(phone):
-    phone = phone.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
-    if phone.startswith('8') and len(phone) == 11:
-        phone = '+7' + phone[1:]
-    elif not phone.startswith('+7'):
-        if phone.startswith('7') and len(phone) == 11:
-            phone = '+7' + phone[1:]
-        else:
-            phone = '+7' + phone
-    return phone
+    """Валидация и нормализация номера телефона.
+    Требования: строго 11 цифр, начинается с +7 или 8.
+    Возвращает нормализованный номер или None в случае ошибки.
+    """
+    phone = phone.strip()
+    
+    # Убираем все пробелы, дефисы, скобки для проверки
+    phone_clean = phone.replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    
+    # Проверяем, что остались только цифры (или +7 в начале)
+    if phone_clean.startswith('+7'):
+        phone_clean = phone_clean[2:]  # Убираем +7 для проверки
+    
+    # Проверяем, что все символы - цифры и длина равна 10 (после удаления +7) или 11 (если начинается с 8)
+    if not phone_clean.isdigit():
+        return None  # Есть буквы или другие символы
+    
+    # Обрабатываем разные варианты начала
+    original_phone = phone.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    
+    if original_phone.startswith('+7') and len(original_phone) == 12:  # +7 и 10 цифр = 12 символов
+        return '+7' + original_phone[2:]
+    elif original_phone.startswith('8') and len(original_phone) == 11:  # 8 и 10 цифр = 11 символов
+        return '+7' + original_phone[1:]
+    elif original_phone.startswith('7') and len(original_phone) == 11:  # 7 и 10 цифр = 11 символов
+        return '+7' + original_phone[1:]
+    
+    return None  # Неправильный формат
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -113,6 +132,15 @@ async def button_callback_activate(update: Update, context: ContextTypes.DEFAULT
 
 async def handle_phone_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = normalize_phone(update.message.text)
+    if not phone:
+        await update.message.reply_text(
+            "❌ Неверный формат номера телефона.\n\n"
+            "Номер должен содержать 11 цифр и начинаться с +7 или 8.\n"
+            "Пример: +79991234567 или 89991234567\n\n"
+            "Пожалуйста, введите номер еще раз:"
+        )
+        return WAITING_PHONE_PURCHASE
+    
     context.user_data['phone'] = phone
     await update.message.reply_text("Теперь введите ваше имя:")
     return WAITING_NAME_PURCHASE
@@ -120,13 +148,25 @@ async def handle_phone_purchase(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def handle_name_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
+    
+    if not is_cyrillic_only(name):
+        await update.message.reply_text(
+            "❌ Имя должно содержать только русские буквы (кириллицу) и пробелы.\n\n"
+            "Пожалуйста, введите ваше имя еще раз:"
+        )
+        return WAITING_NAME_PURCHASE
+    
     user_id = update.effective_user.id
     phone = context.user_data['phone']
     
-    add_purchase(user_id, phone, name)
+    purchase_id = add_purchase(user_id, phone, name)
+    request_number = f"BUY-{purchase_id:06d}"  # Номер заявки в формате BUY-000001
     
     await update.message.reply_text(
-        "Спасибо! Мы с вами свяжемся. ✅"
+        f"✅ Заявка создана!\n\n"
+        f"Номер вашей заявки: <b>{request_number}</b>\n\n"
+        f"Спасибо! Мы с вами свяжемся.",
+        parse_mode='HTML'
     )
     context.user_data.clear()
     return ConversationHandler.END
@@ -134,6 +174,15 @@ async def handle_name_purchase(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_phone_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = normalize_phone(update.message.text)
+    if not phone:
+        await update.message.reply_text(
+            "❌ Неверный формат номера телефона.\n\n"
+            "Номер должен содержать 11 цифр и начинаться с +7 или 8.\n"
+            "Пример: +79991234567 или 89991234567\n\n"
+            "Пожалуйста, введите номер еще раз:"
+        )
+        return WAITING_PHONE_ACTIVATE
+    
     context.user_data['phone'] = phone
     await update.message.reply_text("Теперь введите ваше имя:")
     return WAITING_NAME_ACTIVATE
@@ -141,6 +190,14 @@ async def handle_phone_activate(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
+    
+    if not is_cyrillic_only(name):
+        await update.message.reply_text(
+            "❌ Имя должно содержать только русские буквы (кириллицу) и пробелы.\n\n"
+            "Пожалуйста, введите ваше имя еще раз:"
+        )
+        return WAITING_NAME_ACTIVATE
+    
     user_id = update.effective_user.id
     phone = context.user_data['phone']
     
@@ -200,10 +257,33 @@ async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYP
     return WAITING_SERIAL
 
 
+def is_cyrillic_only(text):
+    """Проверяет, что текст содержит только кириллицу и пробелы."""
+    cyrillic_letters = 'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя '
+    return all(char in cyrillic_letters for char in text) and len(text.strip()) > 0
+
+
+def is_valid_serial_number(text):
+    """Проверяет, что серийный номер содержит только латиницу и цифры или только цифры."""
+    text = text.strip()
+    if not text:
+        return False
+    # Проверяем: только латиница (A-Z, a-z) и цифры (0-9) ИЛИ только цифры
+    return text.isalnum() and all(ord(char) < 128 for char in text)  # Только ASCII символы (латиница + цифры)
+
+
 async def handle_serial_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     serial_number = update.message.text.strip()
-    user_id = update.effective_user.id
     
+    if not is_valid_serial_number(serial_number):
+        await update.message.reply_text(
+            "❌ Неверный формат серийного номера.\n\n"
+            "Серийный номер должен содержать только латинские буквы и цифры, или только цифры.\n\n"
+            "Пожалуйста, введите серийный номер еще раз:"
+        )
+        return WAITING_SERIAL
+    
+    user_id = update.effective_user.id
     update_activation_serial_number(user_id, serial_number)
     
     await update.message.reply_text(
@@ -278,8 +358,16 @@ async def handle_serial_photo_text(update: Update, context: ContextTypes.DEFAULT
 
 async def handle_box_serial_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     box_serial_number = update.message.text.strip()
-    user_id = update.effective_user.id
     
+    if not is_valid_serial_number(box_serial_number):
+        await update.message.reply_text(
+            "❌ Неверный формат серийного номера.\n\n"
+            "Серийный номер должен содержать только латинские буквы и цифры, или только цифры.\n\n"
+            "Пожалуйста, введите серийный номер с коробки еще раз:"
+        )
+        return WAITING_BOX_SERIAL
+    
+    user_id = update.effective_user.id
     update_activation_box_serial_number(user_id, box_serial_number)
     
     await update.message.reply_text(
@@ -304,15 +392,14 @@ async def handle_box_serial_photo(update: Update, context: ContextTypes.DEFAULT_
     
     update_activation_box_serial_photo(user_id, file_id)
     
-    # После получения фото коробки, переходим к оплате и запросу KIT
-    payment_info = (
-        f"Стоимость активации: {ACTIVATION_PRICE}₽\n\n"
-        f"Оплатите на номер Сбербанк: {PAYMENT_PHONE}\n\n"
-        "Теперь введите KIT номер устройства (буквы и цифры):"
+    # После получения фото коробки завершаем и просим ожидать
+    await update.message.reply_text(
+        "✅ Все данные получены!\n\n"
+        "Пожалуйста, ожидайте. ⏳\n\n"
+        "Мы свяжемся с вами в ближайшее время."
     )
-    
-    await update.message.reply_text(payment_info)
-    return WAITING_KIT
+    context.user_data.clear()
+    return ConversationHandler.END
 
 
 async def handle_box_serial_photo_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -840,10 +927,6 @@ def main():
             WAITING_BOX_SERIAL_PHOTO: [
                 MessageHandler(filters.PHOTO | filters.Document.ALL, handle_box_serial_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_box_serial_photo_text)
-            ],
-            WAITING_KIT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_kit),
-                MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback)
             ],
         },
         fallbacks=[
