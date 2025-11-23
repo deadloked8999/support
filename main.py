@@ -15,6 +15,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
     JobQueue,
+    ApplicationHandlerStop,
 )
 from database import (
     init_database,
@@ -54,22 +55,37 @@ def normalize_phone(phone):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    
-    welcome_text = (
-        "Добро пожаловать! 👋\n\n"
-        "Это техподдержка по активации терминалов Starlink. "
-        "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
-        "Выберите нужное действие:"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
-        [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    print(f"DEBUG: start command received from user {update.effective_user.id}")
+    try:
+        # Очищаем все состояния ConversationHandler для этого пользователя
+        context.user_data.clear()
+        print(f"DEBUG: user_data cleared for user {update.effective_user.id}")
+        
+        welcome_text = (
+            "Добро пожаловать! 👋\n\n"
+            "Это техподдержка по активации терминалов Starlink. "
+            "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
+            "Выберите нужное действие:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
+            [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        print(f"DEBUG: start message sent to user {update.effective_user.id}")
+        
+        # Останавливаем дальнейшую обработку
+        raise ApplicationHandlerStop()
+    except ApplicationHandlerStop:
+        raise
+    except Exception as e:
+        print(f"Ошибка в start: {e}")
+        import traceback
+        traceback.print_exc()
+        raise ApplicationHandlerStop()
 
 
 async def button_callback_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -675,7 +691,10 @@ def main():
     if job_queue:
         job_queue.run_repeating(check_subscriptions, interval=3600, first=10)
     
-    application.add_handler(CommandHandler("start", start))
+    # Группа -1 для команд (высший приоритет)
+    application.add_handler(CommandHandler("start", start), group=-1)
+    
+    # Группа 0 для остальных обработчиков
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_)"))
     application.add_handler(admin_password_handler_conv)
