@@ -589,16 +589,22 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    print("Инициализация базы данных...")
     try:
-        print("Инициализация базы данных...")
         init_database()
         print("База данных инициализирована")
-        
-        print("Создание Application...")
+    except Exception as e:
+        print(f"Ошибка при инициализации базы данных: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
+    print("Создание Application...")
+    try:
         application = Application.builder().token(BOT_TOKEN).build()
         print("Application создан")
     except Exception as e:
-        print(f"Ошибка при инициализации: {e}")
+        print(f"Ошибка при создании Application: {e}")
         import traceback
         traceback.print_exc()
         raise
