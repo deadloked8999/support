@@ -24,6 +24,8 @@ from database import (
     update_activation_kit,
     update_activation_serial_number,
     update_activation_serial_photo,
+    update_activation_box_serial_number,
+    update_activation_box_serial_photo,
     get_all_purchases,
     get_all_activations,
     get_statistics,
@@ -35,8 +37,8 @@ from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PH
 
 
 WAITING_PHONE_PURCHASE, WAITING_NAME_PURCHASE = range(2)
-WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_KIT = range(5, 10)
-WAITING_ADMIN_PASSWORD = 10
+WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_BOX_SERIAL, WAITING_BOX_SERIAL_PHOTO, WAITING_KIT = range(5, 12)
+WAITING_ADMIN_PASSWORD = 15
 
 
 def normalize_phone(phone):
@@ -192,6 +194,47 @@ async def handle_serial_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Пожалуйста, отправьте фото серийного номера (фото или документ)."
         )
         return WAITING_SERIAL_PHOTO
+    
+    update_activation_serial_photo(user_id, file_id)
+    
+    message_text = (
+        "А также серийный номер с коробки терминала (написан после букв SN) + его фото, "
+        "прилагаем пример:"
+    )
+    
+    photo_path_jpg = os.path.join(os.path.dirname(__file__), "images", "serial_number_box_example.jpg")
+    photo_path_png = os.path.join(os.path.dirname(__file__), "images", "serial_number_box_example.png")
+    
+    photo_sent = False
+    if os.path.exists(photo_path_jpg):
+        try:
+            with open(photo_path_jpg, 'rb') as photo:
+                await update.message.reply_photo(
+                    photo=photo,
+                    caption=message_text
+                )
+            photo_sent = True
+        except Exception as e:
+            print(f"Ошибка отправки фото JPG: {e}")
+    
+    if not photo_sent and os.path.exists(photo_path_png):
+        try:
+            with open(photo_path_png, 'rb') as photo:
+                await update.message.reply_photo(
+                    photo=photo,
+                    caption=message_text
+                )
+            photo_sent = True
+        except Exception as e:
+            print(f"Ошибка отправки фото PNG: {e}")
+    
+    if not photo_sent:
+        await update.message.reply_text(message_text)
+    
+    await update.message.reply_text(
+        "Пожалуйста, введите серийный номер с коробки (SN):"
+    )
+    return WAITING_BOX_SERIAL
 
 
 async def handle_serial_photo_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -200,39 +243,6 @@ async def handle_serial_photo_text(update: Update, context: ContextTypes.DEFAULT
         "Вы также можете отменить операцию командой /cancel"
     )
     return WAITING_SERIAL_PHOTO
-    
-    update_activation_serial_photo(user_id, file_id)
-    
-    activation_id = context.user_data.get('activation_id')
-    name = context.user_data.get('name', '')
-    phone = context.user_data.get('phone', '')
-    
-    payload = f"activation_{activation_id}_{user_id}"
-    context.user_data['payment_payload'] = payload
-    
-    try:
-        await update.message.reply_invoice(
-            title="Активация терминала Starlink",
-            description=f"Активация терминала для {name}\nТелефон: {phone}",
-            payload=payload,
-            provider_token=PROVIDER_TOKEN or "TEST",
-            currency="TON",
-            prices=[LabeledPrice("Активация терминала", int(ACTIVATION_PRICE_TON * 1e9))],
-            start_parameter=f"activation_{activation_id}",
-        )
-        await update.message.reply_text(
-            f"💳 Также можно оплатить на номер Сбер: {PAYMENT_PHONE}\n\n"
-            "После оплаты введите KIT номер устройства (буквы и цифры):"
-        )
-    except Exception as e:
-        payment_info = (
-            f"Стоимость активации: {ACTIVATION_PRICE}₽ ({ACTIVATION_PRICE_TON} TON)\n\n"
-            f"Оплатите на номер Сбер: {PAYMENT_PHONE}\n\n"
-            "Теперь введите KIT номер устройства (буквы и цифры):"
-        )
-        await update.message.reply_text(payment_info)
-    
-    return WAITING_KIT
 
 
 async def handle_kit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -375,7 +385,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "⚙️ Все активации:\n\n"
         for act in activations[:20]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
             status_emoji = {
                 'pending': '⏳',
                 'payment_confirmed': '💳',
@@ -390,6 +400,10 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Имя: {name} | {phone}\n"
                 f"Дата: {created_at[:19]}\n"
             )
+            if serial_num:
+                text += f"SN устройство: {serial_num}\n"
+            if box_serial:
+                text += f"SN коробка: {box_serial}\n"
             if kit:
                 text += f"KIT: {kit}\n"
             if service_provided_at:
@@ -409,7 +423,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "📋 Детальная информация по активациям:\n\n"
         for act in activations[:10]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
             text += (
                 f"🔹 ID заявки: {act_id}\n"
                 f"User ID: {uid}\n"
@@ -417,6 +431,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Телефон: {phone}\n"
                 f"Статус: {status}\n"
                 f"Оплата получена: {'Да' if payment else 'Нет'}\n"
+                f"SN устройство: {serial_num if serial_num else 'не указан'}\n"
+                f"SN коробка: {box_serial if box_serial else 'не указан'}\n"
                 f"KIT номер: {kit if kit else 'не указан'}\n"
                 f"Услуга оказана: {'✅ Да' if service_provided else '❌ Нет'}\n"
                 f"Дата создания: {created_at[:19]}\n"
@@ -441,7 +457,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = wb.active
         ws.title = "Активации"
         
-        headers = ["User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга", 
+        headers = ["User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+                   "SN устройство", "SN коробка", "KIT номер",
                    "Дата начала активации", "Дата окончания подписки"]
         ws.append(headers)
         
@@ -450,7 +467,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cell.alignment = Alignment(horizontal='center')
         
         for act in activations:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
             
             start_date_str = ""
             end_date_str = ""
@@ -467,6 +484,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 name,
                 created_at[:19],
                 "Активация",
+                serial_num if serial_num else "",
+                box_serial if box_serial else "",
+                kit if kit else "",
                 start_date_str,
                 end_date_str
             ])
@@ -489,7 +509,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         buttons = []
         for act in activations[:50]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
             if not service_provided:
                 buttons.append([InlineKeyboardButton(
                     f"ID {act_id}: {name} ({phone})",
@@ -568,6 +588,13 @@ def main():
             WAITING_SERIAL_PHOTO: [
                 MessageHandler(filters.PHOTO | filters.Document.ALL, handle_serial_photo),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_serial_photo_text)
+            ],
+            WAITING_BOX_SERIAL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_box_serial_number)
+            ],
+            WAITING_BOX_SERIAL_PHOTO: [
+                MessageHandler(filters.PHOTO | filters.Document.ALL, handle_box_serial_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_box_serial_photo_text)
             ],
             WAITING_KIT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_kit),

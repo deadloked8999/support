@@ -1,15 +1,19 @@
 # Папка для изображений
 
-Поместите сюда фото-пример серийного номера.
+Поместите сюда фото-примеры серийных номеров.
 
-**Имя файла:** `serial_number_example.jpg` или `serial_number_example.png`
+## Фото-примеры:
 
-Это фото будет отправляться пользователям как пример, где находится серийный номер на устройстве Starlink.
+1. **`serial_number_example.jpg`** (или `.png`) - пример серийного номера с ножки устройства (где находится SN)
+2. **`serial_number_box_example.jpg`** (или `.png`) - пример серийного номера с коробки терминала
 
-**Как добавить фото:**
-1. Сохраните ваше фото-пример в эту папку
-2. Переименуйте его в `serial_number_example.jpg` (или `.png`)
-3. Добавьте в Git: `git add images/serial_number_example.jpg`
-4. Закоммитьте: `git commit -m "Add serial number example photo"`
+## Как добавить фото:
+
+1. Сохраните фото-примеры в эту папку
+2. Переименуйте:
+   - Фото с ножки → `serial_number_example.jpg`
+   - Фото с коробки → `serial_number_box_example.jpg`
+3. Добавьте в Git: `git add images/`
+4. Закоммитьте: `git commit -m "Add serial number example photos"`
 5. Запушьте: `git push`
 
