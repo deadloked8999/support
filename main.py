@@ -662,16 +662,17 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         
         # Автоматическая ширина столбцов
-        column_widths = {}
+        from openpyxl.utils import get_column_letter
         for col_idx, header in enumerate(headers, start=1):
             max_length = len(str(header))
             for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
-                if row[0].value:
-                    max_length = max(max_length, len(str(row[0].value)))
-            column_widths[col_idx] = min(max_length + 2, 50)  # +2 для отступа, максимум 50 символов
-        
-        for col_idx, width in column_widths.items():
-            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
+                cell = row[0]
+                if cell.value:
+                    cell_value = str(cell.value)
+                    max_length = max(max_length, len(cell_value))
+            # Устанавливаем ширину: длина контента + небольшой отступ, но не более 50 символов
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
         
         filename = f"activations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         wb.save(filename)
