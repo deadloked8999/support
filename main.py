@@ -228,7 +228,8 @@ async def admin_password_handler(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("⚙️ Активации", callback_data="admin_activations")],
         [InlineKeyboardButton("📋 Активации (детально)", callback_data="admin_activations_detail")],
         [InlineKeyboardButton("📄 Экспорт в Excel", callback_data="admin_export_excel")],
-        [InlineKeyboardButton("✅ Отметить как обработанную", callback_data="admin_mark_processed")]
+        [InlineKeyboardButton("✅ Отметить как обработанную", callback_data="admin_mark_processed")],
+        [InlineKeyboardButton("🚪 Выход из админ-панели", callback_data="admin_exit")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -428,6 +429,24 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(f"✅ Заявка #{activation_id} отмечена как обработанная.")
         else:
             await query.message.reply_text(f"❌ Ошибка при обработке заявки #{activation_id}.")
+    
+    elif query.data == "admin_exit":
+        welcome_text = (
+            "👋 Вы вышли из админ-панели.\n\n"
+            "Добро пожаловать! 👋\n\n"
+            "Это техподдержка по активации терминалов Starlink. "
+            "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
+            "Выберите нужное действие:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
+            [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.reply_text(welcome_text, reply_markup=reply_markup)
+        return
 
 
 def main():

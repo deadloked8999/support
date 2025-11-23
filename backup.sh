@@ -52,3 +52,4 @@ LOG_FILE="$BOT_DIR/logs/backup.log"
 mkdir -p "$BOT_DIR/logs"
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Бэкап создан: $BACKUP_FILE (размер: $BACKUP_SIZE)" >> "$LOG_FILE"
 
+
