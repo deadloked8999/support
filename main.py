@@ -1869,8 +1869,14 @@ def main():
             if text.startswith('/'):
                 return
             
-            # Обрабатываем текст как админ-панель
-            await admin_text_handler(update, context)
+            # Вызываем admin_text_handler, но игнорируем возвращаемые состояния,
+            # так как мы вне ConversationHandler
+            try:
+                await admin_text_handler(update, context)
+            except Exception as e:
+                print(f"Ошибка в admin_standalone_text_handler: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Добавляем в группу 1 (после ConversationHandler) с низким приоритетом
         # Это позволит ConversationHandler обработать сообщение первым, если он активен
