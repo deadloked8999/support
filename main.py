@@ -600,7 +600,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(user_id):
         return
     
+    # Очищаем все состояния и данные при входе в админ-панель
+    # Это гарантирует, что при каждом /admin мы начинаем с запроса пароля
+    context.user_data.clear()
     context.user_data['admin_auth'] = True
+    
     await update.message.reply_text(
         "🔐 Админ-панель\n\nВведите пароль для доступа:"
     )
@@ -1800,6 +1804,7 @@ def main():
             CommandHandler("cancel", cancel),
             CommandHandler("start", admin_start_fallback)
         ],
+        allow_reentry=True,
     )
     
     async def check_subscriptions(context: ContextTypes.DEFAULT_TYPE):
@@ -1852,39 +1857,6 @@ def main():
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
         application.add_handler(activation_handler)
-        
-        # Обработчик текстовых сообщений админа вне ConversationHandler
-        # (для обработки кнопок клавиатуры после отмены или когда ConversationHandler не активен)
-        async def admin_standalone_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """Обработчик текстовых сообщений админа вне ConversationHandler"""
-            user_id = update.effective_user.id
-            if not is_admin(user_id):
-                return
-            
-            # Игнорируем команды (они обрабатываются отдельно)
-            if not update.message or not update.message.text:
-                return
-            
-            text = update.message.text.strip()
-            if text.startswith('/'):
-                return
-            
-            # Вызываем admin_text_handler, но игнорируем возвращаемые состояния,
-            # так как мы вне ConversationHandler
-            try:
-                await admin_text_handler(update, context)
-            except Exception as e:
-                print(f"Ошибка в admin_standalone_text_handler: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        # Добавляем в группу 1 (после ConversationHandler) с низким приоритетом
-        # Это позволит ConversationHandler обработать сообщение первым, если он активен
-        application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            admin_standalone_text_handler
-        ), group=1)
-        
         print("Все обработчики зарегистрированы")
         
         print("Бот запущен...")
