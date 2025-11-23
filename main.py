@@ -35,6 +35,8 @@ from database import (
     update_last_reminder_day,
     update_activation_email_password,
     get_activation_by_id,
+    get_pending_activations,
+    get_processed_activations,
 )
 from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PHONE, PROVIDER_TOKEN, ADMIN_IDS, ADMIN_PASSWORD, SERIAL_NUMBER_EXAMPLE
 
@@ -720,42 +722,16 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(text)
     
     elif query.data == "admin_activations":
-        activations = get_all_activations()
-        if not activations:
-            await query.message.reply_text("📭 Активаций пока нет.")
-            return
-        
-        text = "⚙️ Все активации:\n\n"
-        for act in activations[:20]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
-            status_emoji = {
-                'pending': '⏳',
-                'payment_confirmed': '💳',
-                'completed': '✅'
-            }.get(status, '❓')
-            
-            service_status = "✅ Обработана" if service_provided else "⏳ Не обработана"
-            
-            text += (
-                f"{status_emoji} ID: {act_id} | {status} | {service_status}\n"
-                f"User ID: {uid}\n"
-                f"Имя: {name} | {phone}\n"
-                f"Дата: {created_at[:19]}\n"
-            )
-            if serial_num:
-                text += f"SN устройство: {serial_num}\n"
-            if box_serial:
-                text += f"SN коробка: {box_serial}\n"
-            if kit:
-                text += f"KIT: {kit}\n"
-            if service_provided_at:
-                text += f"Обработана: {service_provided_at[:19]}\n"
-            text += f"{'─' * 30}\n"
-        
-        if len(activations) > 20:
-            text += f"\n... и еще {len(activations) - 20} записей"
-        
-        await query.message.reply_text(text)
+        # Показываем две кнопки: Ожидают и Обработанные
+        keyboard = [
+            [InlineKeyboardButton("⏳ Ожидают", callback_data="admin_activations_pending_page_0")],
+            [InlineKeyboardButton("✅ Обработанные", callback_data="admin_activations_processed_page_0")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.reply_text(
+            "⚙️ Выберите категорию активаций:",
+            reply_markup=reply_markup
+        )
     
     elif query.data == "admin_activations_detail":
         activations = get_all_activations()
@@ -928,6 +904,135 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
                 f"Или отправьте /cancel для отмены."
             )
+    
+    elif query.data.startswith("admin_activations_pending_page_"):
+        # Показываем список ожидающих заявок с пагинацией
+        page = int(query.data.split("_")[-1])
+        activations = get_pending_activations()
+        
+        if not activations:
+            await query.message.reply_text("📭 Ожидающих заявок пока нет.")
+            return
+        
+        buttons = []
+        start_idx = page * 10
+        end_idx = start_idx + 10
+        
+        for act in activations[start_idx:end_idx]:
+            act_id, uid, phone, name = act[0], act[1], act[2], act[3]
+            request_number = f"ST-{act_id:06d}"
+            buttons.append([InlineKeyboardButton(
+                f"{request_number}: {name} ({phone})",
+                callback_data=f"view_activation_{act_id}"
+            )])
+        
+        # Кнопки пагинации
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀️ Назад", callback_data=f"admin_activations_pending_page_{page-1}"))
+        if end_idx < len(activations):
+            nav_buttons.append(InlineKeyboardButton("▶️ Вперед", callback_data=f"admin_activations_pending_page_{page+1}"))
+        
+        if nav_buttons:
+            buttons.append(nav_buttons)
+        
+        buttons.append([InlineKeyboardButton("🔙 Назад к категориям", callback_data="admin_activations")])
+        
+        reply_markup = InlineKeyboardMarkup(buttons)
+        total = len(activations)
+        text = f"⏳ Ожидающие заявки (страница {page + 1})\n\n"
+        text += f"Всего: {total} заявок\n"
+        text += f"Показано: {start_idx + 1}-{min(end_idx, total)} из {total}\n\n"
+        text += "Выберите заявку для просмотра деталей:"
+        
+        await query.message.reply_text(text, reply_markup=reply_markup)
+    
+    elif query.data.startswith("admin_activations_processed_page_"):
+        # Показываем список обработанных заявок с пагинацией
+        page = int(query.data.split("_")[-1])
+        activations = get_processed_activations()
+        
+        if not activations:
+            await query.message.reply_text("📭 Обработанных заявок пока нет.")
+            return
+        
+        buttons = []
+        start_idx = page * 10
+        end_idx = start_idx + 10
+        
+        for act in activations[start_idx:end_idx]:
+            act_id, uid, phone, name = act[0], act[1], act[2], act[3]
+            request_number = f"ST-{act_id:06d}"
+            buttons.append([InlineKeyboardButton(
+                f"{request_number}: {name} ({phone})",
+                callback_data=f"view_activation_{act_id}"
+            )])
+        
+        # Кнопки пагинации
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀️ Назад", callback_data=f"admin_activations_processed_page_{page-1}"))
+        if end_idx < len(activations):
+            nav_buttons.append(InlineKeyboardButton("▶️ Вперед", callback_data=f"admin_activations_processed_page_{page+1}"))
+        
+        if nav_buttons:
+            buttons.append(nav_buttons)
+        
+        buttons.append([InlineKeyboardButton("🔙 Назад к категориям", callback_data="admin_activations")])
+        
+        reply_markup = InlineKeyboardMarkup(buttons)
+        total = len(activations)
+        text = f"✅ Обработанные заявки (страница {page + 1})\n\n"
+        text += f"Всего: {total} заявок\n"
+        text += f"Показано: {start_idx + 1}-{min(end_idx, total)} из {total}\n\n"
+        text += "Выберите заявку для просмотра деталей:"
+        
+        await query.message.reply_text(text, reply_markup=reply_markup)
+    
+    elif query.data.startswith("view_activation_"):
+        # Показываем детальную информацию о заявке
+        activation_id = int(query.data.split("_")[2])
+        activation = get_activation_by_id(activation_id)
+        
+        if not activation:
+            await query.message.reply_text("❌ Заявка не найдена.")
+            return
+        
+        act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:17]
+        request_number = f"ST-{act_id:06d}"
+        
+        text = f"📋 Детальная информация по заявке {request_number}\n\n"
+        text += f"🔹 ID заявки: {act_id}\n"
+        text += f"User ID: {uid}\n"
+        text += f"Имя: {name}\n"
+        text += f"Телефон: {phone}\n"
+        text += f"Дата создания: {created_at[:19]}\n"
+        text += f"Статус: {status}\n"
+        text += f"Оплата получена: {'✅ Да' if payment else '❌ Нет'}\n"
+        text += f"Услуга оказана: {'✅ Да' if service_provided else '❌ Нет'}\n"
+        
+        if service_provided_at:
+            start_date = datetime.fromisoformat(service_provided_at)
+            end_date = start_date + timedelta(days=30)
+            text += f"Дата начала активации: {service_provided_at[:19]}\n"
+            text += f"Дата окончания подписки: {end_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        
+        text += f"\n📦 Данные устройства:\n"
+        text += f"SN устройство: {serial_num if serial_num else 'не указан'}\n"
+        text += f"SN коробка: {box_serial if box_serial else 'не указан'}\n"
+        if kit:
+            text += f"KIT номер: {kit}\n"
+        
+        if email:
+            text += f"\n📧 Email: {email}\n"
+        if password:
+            text += f"🔑 Пароль: {password}\n"
+        
+        # Кнопка "Назад"
+        keyboard = [[InlineKeyboardButton("🔙 Назад к списку", callback_data="admin_activations")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.reply_text(text, reply_markup=reply_markup)
     
     elif query.data == "admin_exit":
         welcome_text = (
@@ -1109,7 +1214,7 @@ def main():
         # Группа 0 для остальных обработчиков
         application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
         application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
-        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_)"))
+        application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_|add_cred_|view_activation_)"))
         application.add_handler(admin_password_handler_conv)
         application.add_handler(purchase_handler)
         application.add_handler(activation_handler)

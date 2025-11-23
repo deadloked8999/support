@@ -232,6 +232,42 @@ def get_all_activations():
     return activations
 
 
+def get_pending_activations():
+    """Получает ожидающие (необработанные) активации, отсортированные по дате и номеру заявки"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, user_id, phone, name, created_at, payment_received, 
+               receipt_file_id, serial_number, serial_photo_file_id, 
+               box_serial_number, box_serial_photo_file_id, kit_number, 
+               status, service_provided, service_provided_at, email, password
+        FROM activations
+        WHERE service_provided = 0
+        ORDER BY created_at DESC, id DESC
+    ''')
+    activations = cursor.fetchall()
+    conn.close()
+    return activations
+
+
+def get_processed_activations():
+    """Получает обработанные активации, отсортированные по дате обработки и номеру заявки"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, user_id, phone, name, created_at, payment_received, 
+               receipt_file_id, serial_number, serial_photo_file_id, 
+               box_serial_number, box_serial_photo_file_id, kit_number, 
+               status, service_provided, service_provided_at, email, password
+        FROM activations
+        WHERE service_provided = 1
+        ORDER BY service_provided_at DESC, id DESC
+    ''')
+    activations = cursor.fetchall()
+    conn.close()
+    return activations
+
+
 def mark_service_provided(activation_id):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
