@@ -54,6 +54,8 @@ def normalize_phone(phone):
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    
     welcome_text = (
         "Добро пожаловать! 👋\n\n"
         "Это техподдержка по активации терминалов Starlink. "
@@ -650,9 +652,9 @@ def main():
         job_queue.run_repeating(check_subscriptions, interval=3600, first=10)
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(admin_password_handler_conv)
-    application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_)"))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    application.add_handler(CallbackQueryHandler(admin_callback, pattern="^(admin_|mark_)"))
+    application.add_handler(admin_password_handler_conv)
     application.add_handler(purchase_handler)
     application.add_handler(activation_handler)
     
