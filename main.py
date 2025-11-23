@@ -589,6 +589,12 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    import sys
+    sys.stdout.write("MAIN: Функция main() вызвана\n")
+    sys.stdout.flush()
+    sys.stderr.write("MAIN: Функция main() вызвана (stderr)\n")
+    sys.stderr.flush()
+    
     print("Инициализация базы данных...")
     try:
         init_database()
@@ -733,11 +739,23 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
+    sys.stdout.write("START: Скрипт запущен\n")
+    sys.stdout.flush()
+    sys.stderr.write("START: Скрипт запущен (stderr)\n")
+    sys.stderr.flush()
+    
+    print("START: __name__ == '__main__'")
+    
     try:
         main()
     except Exception as e:
-        print(f"КРИТИЧЕСКАЯ ОШИБКА при запуске бота: {e}")
+        error_msg = f"КРИТИЧЕСКАЯ ОШИБКА при запуске бота: {e}"
+        print(error_msg)
+        sys.stderr.write(error_msg + "\n")
+        sys.stderr.flush()
         import traceback
         traceback.print_exc()
+        traceback.print_exc(file=sys.stderr)
         raise
 
