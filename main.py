@@ -430,6 +430,75 @@ async def admin_password_handler(update: Update, context: ContextTypes.DEFAULT_T
     return ConversationHandler.END
 
 
+async def admin_email_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        return ConversationHandler.END
+    
+    # Проверяем, что это действительно состояние для ввода email
+    if context.user_data.get('admin_cred_state') != WAITING_ADMIN_EMAIL:
+        return ConversationHandler.END
+    
+    email = update.message.text.strip()
+    context.user_data['cred_email'] = email
+    activation_id = context.user_data.get('cred_activation_id')
+    
+    if not activation_id:
+        await update.message.reply_text("❌ Ошибка: не выбрана заявка.")
+        context.user_data.pop('admin_cred_state', None)
+        return ConversationHandler.END
+    
+    context.user_data['admin_cred_state'] = WAITING_ADMIN_PASSWORD_FIELD
+    await update.message.reply_text(
+        f"📝 Теперь введите пароль для заявки ST-{activation_id:06d}:"
+    )
+    return WAITING_ADMIN_PASSWORD_FIELD
+
+
+async def admin_password_field_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        return ConversationHandler.END
+    
+    # Проверяем, что это действительно состояние для ввода пароля
+    if context.user_data.get('admin_cred_state') != WAITING_ADMIN_PASSWORD_FIELD:
+        return ConversationHandler.END
+    
+    password = update.message.text.strip()
+    activation_id = context.user_data.get('cred_activation_id')
+    email = context.user_data.get('cred_email')
+    
+    if not activation_id or not email:
+        await update.message.reply_text("❌ Ошибка: не заполнены все данные.")
+        context.user_data.pop('cred_activation_id', None)
+        context.user_data.pop('cred_email', None)
+        context.user_data.pop('admin_cred_state', None)
+        return ConversationHandler.END
+    
+    if update_activation_email_password(activation_id, email, password):
+        request_number = f"ST-{activation_id:06d}"
+        await update.message.reply_text(
+            f"✅ Email и пароль успешно привязаны к заявке {request_number}!\n\n"
+            f"Email: {email}\n"
+            f"Пароль: {password}"
+        )
+        
+        # НЕ отправляем пользователю email и пароль - это только для админа
+        
+        context.user_data.pop('cred_activation_id', None)
+        context.user_data.pop('cred_email', None)
+        context.user_data.pop('admin_cred_state', None)
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text(f"❌ Ошибка при сохранении данных.")
+        context.user_data.pop('cred_activation_id', None)
+        context.user_data.pop('cred_email', None)
+        context.user_data.pop('admin_cred_state', None)
+        return ConversationHandler.END
+
+
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -591,6 +660,18 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 email if email else "",
                 password if password else ""
             ])
+        
+        # Автоматическая ширина столбцов
+        column_widths = {}
+        for col_idx, header in enumerate(headers, start=1):
+            max_length = len(str(header))
+            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx):
+                if row[0].value:
+                    max_length = max(max_length, len(str(row[0].value)))
+            column_widths[col_idx] = min(max_length + 2, 50)  # +2 для отступа, максимум 50 символов
+        
+        for col_idx, width in column_widths.items():
+            ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = width
         
         filename = f"activations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         wb.save(filename)
