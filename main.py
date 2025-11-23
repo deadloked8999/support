@@ -164,8 +164,9 @@ async def handle_name_purchase(update: Update, context: ContextTypes.DEFAULT_TYP
     
     user_id = update.effective_user.id
     phone = context.user_data['phone']
+    username = update.effective_user.username  # Получаем username, если доступен
     
-    purchase_id = add_purchase(user_id, phone, name)
+    purchase_id = add_purchase(user_id, phone, name, username)
     request_number = f"BUY-{purchase_id:06d}"  # Номер заявки в формате BUY-000001
     
     await update.message.reply_text(
@@ -206,8 +207,9 @@ async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYP
     
     user_id = update.effective_user.id
     phone = context.user_data['phone']
+    username = update.effective_user.username  # Получаем username, если доступен
     
-    activation_id = add_activation(user_id, phone, name)
+    activation_id = add_activation(user_id, phone, name, username)
     request_number = f"ST-{activation_id:06d}"  # Номер заявки в формате ST-000001
     context.user_data['activation_id'] = activation_id
     context.user_data['name'] = name
@@ -706,10 +708,12 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "🛒 Все покупки:\n\n"
         for purchase in purchases[:20]:
-            purchase_id, uid, phone, name, created_at = purchase
+            purchase_id, uid, phone, name, username, created_at = purchase[:6]
+            username_str = f"@{username}" if username else "не указан"
             text += (
                 f"ID: {purchase_id}\n"
                 f"User ID: {uid}\n"
+                f"Username: {username_str}\n"
                 f"Имя: {name}\n"
                 f"Телефон: {phone}\n"
                 f"Дата: {created_at[:19]}\n"
@@ -775,7 +779,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = wb.active
         ws.title = "Активации"
         
-        headers = ["Номер заявки", "User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+        headers = ["Номер заявки", "User ID", "Username", "Номер телефона", "Имя", "Дата заявки", "Услуга",
                    "SN устройство", "SN коробка", "KIT номер",
                    "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
@@ -785,7 +789,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cell.alignment = Alignment(horizontal='center')
         
         for act in activations:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
             
             request_number = f"ST-{act_id:06d}"
             start_date_str = ""
@@ -800,6 +804,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ws.append([
                 request_number,
                 uid,
+                f"@{username}" if username else "",
                 phone,
                 name,
                 created_at[:19],
@@ -844,7 +849,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         buttons = []
         for act in activations[:50]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
             if not service_provided:
                 request_number = f"ST-{act_id:06d}"
                 buttons.append([InlineKeyboardButton(
@@ -878,7 +883,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         buttons = []
         for act in activations[:50]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
             request_number = f"ST-{act_id:06d}"
             buttons.append([InlineKeyboardButton(
                 f"{request_number}: {name} ({phone})" + (" ✉️" if email else ""),
@@ -897,7 +902,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
         activation = get_activation_by_id(activation_id)
         if activation:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:17]
+            act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
             request_number = f"ST-{act_id:06d}"
             current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
             await query.message.reply_text(
@@ -998,12 +1003,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text("❌ Заявка не найдена.")
             return
         
-        act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:17]
+        act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:18]
         request_number = f"ST-{act_id:06d}"
         
         text = f"📋 Детальная информация по заявке {request_number}\n\n"
         text += f"🔹 ID заявки: {act_id}\n"
         text += f"User ID: {uid}\n"
+        text += f"Username: @{username}\n" if username else "Username: не указан\n"
         text += f"Имя: {name}\n"
         text += f"Телефон: {phone}\n"
         text += f"Дата создания: {created_at[:19]}\n"
@@ -1041,7 +1047,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = wb.active
         ws.title = "Активация"
         
-        headers = ["Номер заявки", "User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+        headers = ["Номер заявки", "User ID", "Username", "Номер телефона", "Имя", "Дата заявки", "Услуга",
                    "SN устройство", "SN коробка", "KIT номер",
                    "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
@@ -1064,6 +1070,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws.append([
             request_number,
             uid,
+            f"@{username}" if username else "",
             phone,
             name,
             created_at[:19],

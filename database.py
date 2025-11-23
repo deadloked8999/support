@@ -101,30 +101,44 @@ def init_database():
     except sqlite3.OperationalError:
         pass
     
+    try:
+        cursor.execute('''
+            ALTER TABLE purchases ADD COLUMN username TEXT
+        ''')
+    except sqlite3.OperationalError:
+        pass
+    
+    try:
+        cursor.execute('''
+            ALTER TABLE activations ADD COLUMN username TEXT
+        ''')
+    except sqlite3.OperationalError:
+        pass
+    
     conn.commit()
     conn.close()
 
 
-def add_purchase(user_id, phone, name):
+def add_purchase(user_id, phone, name, username=None):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO purchases (user_id, phone, name, created_at)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, phone, name, datetime.now().isoformat()))
+        INSERT INTO purchases (user_id, phone, name, username, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, phone, name, username, datetime.now().isoformat()))
     conn.commit()
     purchase_id = cursor.lastrowid
     conn.close()
     return purchase_id
 
 
-def add_activation(user_id, phone, name):
+def add_activation(user_id, phone, name, username=None):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO activations (user_id, phone, name, created_at)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, phone, name, datetime.now().isoformat()))
+        INSERT INTO activations (user_id, phone, name, username, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, phone, name, username, datetime.now().isoformat()))
     conn.commit()
     activation_id = cursor.lastrowid
     conn.close()
@@ -207,7 +221,7 @@ def get_all_purchases():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, user_id, phone, name, created_at
+        SELECT id, user_id, phone, name, username, created_at
         FROM purchases
         ORDER BY created_at DESC
     ''')
@@ -220,7 +234,7 @@ def get_all_activations():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, user_id, phone, name, created_at, payment_received, 
+        SELECT id, user_id, phone, name, username, created_at, payment_received, 
                receipt_file_id, serial_number, serial_photo_file_id, 
                box_serial_number, box_serial_photo_file_id, kit_number, 
                status, service_provided, service_provided_at, email, password
@@ -237,7 +251,7 @@ def get_pending_activations():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, user_id, phone, name, created_at, payment_received, 
+        SELECT id, user_id, phone, name, username, created_at, payment_received, 
                receipt_file_id, serial_number, serial_photo_file_id, 
                box_serial_number, box_serial_photo_file_id, kit_number, 
                status, service_provided, service_provided_at, email, password
@@ -255,7 +269,7 @@ def get_processed_activations():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, user_id, phone, name, created_at, payment_received, 
+        SELECT id, user_id, phone, name, username, created_at, payment_received, 
                receipt_file_id, serial_number, serial_photo_file_id, 
                box_serial_number, box_serial_photo_file_id, kit_number, 
                status, service_provided, service_provided_at, email, password
@@ -325,7 +339,7 @@ def get_activation_by_id(activation_id):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT id, user_id, phone, name, created_at, payment_received, 
+        SELECT id, user_id, phone, name, username, created_at, payment_received, 
                receipt_file_id, serial_number, serial_photo_file_id, 
                box_serial_number, box_serial_photo_file_id, kit_number, 
                status, service_provided, service_provided_at, email, password
