@@ -975,6 +975,17 @@ def main():
         traceback.print_exc()
         raise
     
+    async def end_purchase_and_start_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Завершает процесс покупки и начинает процесс активации"""
+        context.user_data.clear()
+        query = update.callback_query
+        await query.answer()
+        await query.message.reply_text(
+            "Для активации терминала мне нужна ваша информация.\n\n"
+            "Пожалуйста, введите ваш номер телефона (формат: 8XXXXXXXXXX или +7XXXXXXXXXX):"
+        )
+        return ConversationHandler.END
+    
     purchase_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_callback_buy, pattern="^buy$")],
         states={
@@ -986,10 +997,23 @@ def main():
             ],
         },
         fallbacks=[
+            CallbackQueryHandler(end_purchase_and_start_activate, pattern="^activate$"),
             CommandHandler("cancel", cancel),
             CommandHandler("start", start_fallback)
         ],
+        allow_reentry=True,
     )
+    
+    async def end_activate_and_start_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Завершает процесс активации и начинает процесс покупки"""
+        context.user_data.clear()
+        query = update.callback_query
+        await query.answer()
+        await query.message.reply_text(
+            "Для покупки терминала мне нужна ваша информация.\n\n"
+            "Пожалуйста, введите ваш номер телефона (формат: 8XXXXXXXXXX или +7XXXXXXXXXX):"
+        )
+        return ConversationHandler.END
     
     activation_handler = ConversationHandler(
         entry_points=[
@@ -1020,9 +1044,11 @@ def main():
             ],
         },
         fallbacks=[
+            CallbackQueryHandler(end_activate_and_start_purchase, pattern="^buy$"),
             CommandHandler("cancel", cancel),
             CommandHandler("start", start_fallback)
         ],
+        allow_reentry=True,
     )
     
     admin_password_handler_conv = ConversationHandler(
