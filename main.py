@@ -33,6 +33,8 @@ from database import (
     mark_service_provided,
     get_activations_for_subscription_reminders,
     update_last_reminder_day,
+    update_activation_email_password,
+    get_activation_by_id,
 )
 from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PHONE, PROVIDER_TOKEN, ADMIN_IDS, ADMIN_PASSWORD, SERIAL_NUMBER_EXAMPLE
 
@@ -40,6 +42,7 @@ from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PH
 WAITING_PHONE_PURCHASE, WAITING_NAME_PURCHASE = range(2)
 WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_BOX_SERIAL, WAITING_BOX_SERIAL_PHOTO, WAITING_KIT = range(5, 12)
 WAITING_ADMIN_PASSWORD = 15
+WAITING_ADMIN_SELECT_ACTIVATION, WAITING_ADMIN_EMAIL, WAITING_ADMIN_PASSWORD_FIELD = 16, 17, 18
 
 
 def normalize_phone(phone):
@@ -142,9 +145,19 @@ async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYP
     phone = context.user_data['phone']
     
     activation_id = add_activation(user_id, phone, name)
+    request_number = f"ST-{activation_id:06d}"  # Номер заявки в формате ST-000001
     context.user_data['activation_id'] = activation_id
     context.user_data['name'] = name
     context.user_data['phone'] = phone
+    context.user_data['request_number'] = request_number
+    
+    # Отправляем номер заявки пользователю
+    await update.message.reply_text(
+        f"✅ Заявка создана!\n\n"
+        f"Номер вашей заявки: <b>{request_number}</b>\n\n"
+        f"Сохраните этот номер для отслеживания статуса.",
+        parse_mode='HTML'
+    )
     
     message_text = (
         "Спасибо за доверие! Для активации от Вас нужен серийный номер "
@@ -405,6 +418,7 @@ async def admin_password_handler(update: Update, context: ContextTypes.DEFAULT_T
         [InlineKeyboardButton("📋 Активации (детально)", callback_data="admin_activations_detail")],
         [InlineKeyboardButton("📄 Экспорт в Excel", callback_data="admin_export_excel")],
         [InlineKeyboardButton("✅ Отметить как обработанную", callback_data="admin_mark_processed")],
+        [InlineKeyboardButton("✉️ Привязать Email/Пароль", callback_data="admin_add_credentials")],
         [InlineKeyboardButton("🚪 Выход из админ-панели", callback_data="admin_exit")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -468,7 +482,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "⚙️ Все активации:\n\n"
         for act in activations[:20]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
             status_emoji = {
                 'pending': '⏳',
                 'payment_confirmed': '💳',
@@ -540,9 +554,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ws = wb.active
         ws.title = "Активации"
         
-        headers = ["User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга",
+        headers = ["Номер заявки", "User ID", "Номер телефона", "Имя", "Дата заявки", "Услуга",
                    "SN устройство", "SN коробка", "KIT номер",
-                   "Дата начала активации", "Дата окончания подписки"]
+                   "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
         
         for cell in ws[1]:
@@ -550,8 +564,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cell.alignment = Alignment(horizontal='center')
         
         for act in activations:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
             
+            request_number = f"ST-{act_id:06d}"
             start_date_str = ""
             end_date_str = ""
             
@@ -562,6 +577,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 end_date_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
             
             ws.append([
+                request_number,
                 uid,
                 phone,
                 name,
@@ -571,7 +587,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 box_serial if box_serial else "",
                 kit if kit else "",
                 start_date_str,
-                end_date_str
+                end_date_str,
+                email if email else "",
+                password if password else ""
             ])
         
         filename = f"activations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
@@ -592,10 +610,11 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         buttons = []
         for act in activations[:50]:
-            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at = act[:15]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
             if not service_provided:
+                request_number = f"ST-{act_id:06d}"
                 buttons.append([InlineKeyboardButton(
-                    f"ID {act_id}: {name} ({phone})",
+                    f"{request_number}: {name} ({phone})",
                     callback_data=f"mark_{act_id}"
                 )])
         
@@ -612,9 +631,45 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("mark_"):
         activation_id = int(query.data.split("_")[1])
         if mark_service_provided(activation_id):
-            await query.message.reply_text(f"✅ Заявка #{activation_id} отмечена как обработанная.")
+            request_number = f"ST-{activation_id:06d}"
+            await query.message.reply_text(f"✅ Заявка {request_number} отмечена как обработанная.")
         else:
             await query.message.reply_text(f"❌ Ошибка при обработке заявки #{activation_id}.")
+    
+    elif query.data == "admin_add_credentials":
+        activations = get_all_activations()
+        if not activations:
+            await query.message.reply_text("📭 Активаций пока нет.")
+            return
+        
+        buttons = []
+        for act in activations[:50]:
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:17]
+            request_number = f"ST-{act_id:06d}"
+            buttons.append([InlineKeyboardButton(
+                f"{request_number}: {name} ({phone})" + (" ✉️" if email else ""),
+                callback_data=f"add_cred_{act_id}"
+            )])
+        
+        reply_markup = InlineKeyboardMarkup(buttons)
+        await query.message.reply_text(
+            "Выберите заявку для привязки email и пароля:",
+            reply_markup=reply_markup
+        )
+    
+    elif query.data.startswith("add_cred_"):
+        activation_id = int(query.data.split("_")[2])
+        context.user_data['cred_activation_id'] = activation_id
+        context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
+        activation = get_activation_by_id(activation_id)
+        if activation:
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:17]
+            request_number = f"ST-{act_id:06d}"
+            current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
+            await query.message.reply_text(
+                f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
+                f"Или отправьте /cancel для отмены."
+            )
     
     elif query.data == "admin_exit":
         welcome_text = (
@@ -715,14 +770,42 @@ def main():
         ],
     )
     
+    async def add_cred_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        if query:
+            await query.answer()
+            activation_id = int(query.data.split("_")[2])
+            context.user_data['cred_activation_id'] = activation_id
+            context.user_data['admin_cred_state'] = WAITING_ADMIN_EMAIL
+            activation = get_activation_by_id(activation_id)
+            if activation:
+                act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = activation[:17]
+                request_number = f"ST-{act_id:06d}"
+                current_info = f"\nТекущий email: {email if email else 'не указан'}\nТекущий пароль: {'*' * len(password) if password else 'не указан'}" if email or password else ""
+                await query.message.reply_text(
+                    f"📝 Введите email для заявки {request_number} ({name}):{current_info}\n\n"
+                    f"Или отправьте /cancel для отмены."
+                )
+                return WAITING_ADMIN_EMAIL
+        return ConversationHandler.END
+    
     admin_password_handler_conv = ConversationHandler(
-        entry_points=[CommandHandler("admin", admin_command)],
+        entry_points=[
+            CommandHandler("admin", admin_command),
+            CallbackQueryHandler(add_cred_entry, pattern="^add_cred_")
+        ],
         states={
             WAITING_ADMIN_PASSWORD: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, admin_password_handler)
             ],
+            WAITING_ADMIN_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_email_handler)
+            ],
+            WAITING_ADMIN_PASSWORD_FIELD: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, admin_password_field_handler)
+            ],
         },
-        fallbacks=[],
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
     
     async def check_subscriptions(context: ContextTypes.DEFAULT_TYPE):

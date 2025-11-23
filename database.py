@@ -87,6 +87,20 @@ def init_database():
     except sqlite3.OperationalError:
         pass
     
+    try:
+        cursor.execute('''
+            ALTER TABLE activations ADD COLUMN email TEXT
+        ''')
+    except sqlite3.OperationalError:
+        pass
+    
+    try:
+        cursor.execute('''
+            ALTER TABLE activations ADD COLUMN password TEXT
+        ''')
+    except sqlite3.OperationalError:
+        pass
+    
     conn.commit()
     conn.close()
 
@@ -99,7 +113,9 @@ def add_purchase(user_id, phone, name):
         VALUES (?, ?, ?, ?)
     ''', (user_id, phone, name, datetime.now().isoformat()))
     conn.commit()
+    purchase_id = cursor.lastrowid
     conn.close()
+    return purchase_id
 
 
 def add_activation(user_id, phone, name):
@@ -207,7 +223,7 @@ def get_all_activations():
         SELECT id, user_id, phone, name, created_at, payment_received, 
                receipt_file_id, serial_number, serial_photo_file_id, 
                box_serial_number, box_serial_photo_file_id, kit_number, 
-               status, service_provided, service_provided_at
+               status, service_provided, service_provided_at, email, password
         FROM activations
         ORDER BY created_at DESC
     ''')
@@ -253,6 +269,36 @@ def update_last_reminder_day(activation_id, days_left):
     ''', (days_left, activation_id))
     conn.commit()
     conn.close()
+
+
+def update_activation_email_password(activation_id, email, password):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE activations 
+        SET email = ?, password = ?
+        WHERE id = ?
+    ''', (email, password, activation_id))
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
+def get_activation_by_id(activation_id):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, user_id, phone, name, created_at, payment_received, 
+               receipt_file_id, serial_number, serial_photo_file_id, 
+               box_serial_number, box_serial_photo_file_id, kit_number, 
+               status, service_provided, service_provided_at, email, password
+        FROM activations
+        WHERE id = ?
+    ''', (activation_id,))
+    activation = cursor.fetchone()
+    conn.close()
+    return activation
 
 
 def get_statistics():
