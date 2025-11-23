@@ -33,6 +33,9 @@ bot_data.db
 *.xlsx
 activations_*.xlsx
 
+# Images (keep example photo)
+!images/serial_number_example.*
+
 # IDE
 .vscode/
 .idea/

@@ -26,6 +26,8 @@ def init_database():
             created_at TEXT NOT NULL,
             payment_received INTEGER DEFAULT 0,
             receipt_file_id TEXT,
+            serial_number TEXT,
+            serial_photo_file_id TEXT,
             kit_number TEXT,
             status TEXT DEFAULT 'pending',
             service_provided INTEGER DEFAULT 0,
@@ -33,6 +35,20 @@ def init_database():
             last_reminder_day INTEGER
         )
     ''')
+    
+    try:
+        cursor.execute('''
+            ALTER TABLE activations ADD COLUMN serial_number TEXT
+        ''')
+    except sqlite3.OperationalError:
+        pass
+    
+    try:
+        cursor.execute('''
+            ALTER TABLE activations ADD COLUMN serial_photo_file_id TEXT
+        ''')
+    except sqlite3.OperationalError:
+        pass
     
     try:
         cursor.execute('''
@@ -95,6 +111,30 @@ def update_activation_receipt(user_id, receipt_file_id):
     conn.close()
 
 
+def update_activation_serial_number(user_id, serial_number):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE activations 
+        SET serial_number = ?
+        WHERE user_id = ? AND serial_number IS NULL
+    ''', (serial_number, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_activation_serial_photo(user_id, photo_file_id):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE activations 
+        SET serial_photo_file_id = ?
+        WHERE user_id = ? AND serial_photo_file_id IS NULL
+    ''', (photo_file_id, user_id))
+    conn.commit()
+    conn.close()
+
+
 def update_activation_kit(user_id, kit_number):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
@@ -125,7 +165,8 @@ def get_all_activations():
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, user_id, phone, name, created_at, payment_received, 
-               receipt_file_id, kit_number, status, service_provided, service_provided_at
+               receipt_file_id, serial_number, serial_photo_file_id, kit_number, 
+               status, service_provided, service_provided_at
         FROM activations
         ORDER BY created_at DESC
     ''')

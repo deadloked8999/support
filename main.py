@@ -22,6 +22,8 @@ from database import (
     add_activation,
     update_activation_receipt,
     update_activation_kit,
+    update_activation_serial_number,
+    update_activation_serial_photo,
     get_all_purchases,
     get_all_activations,
     get_statistics,
@@ -29,11 +31,11 @@ from database import (
     get_activations_for_subscription_reminders,
     update_last_reminder_day,
 )
-from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PHONE, PROVIDER_TOKEN, ADMIN_IDS, ADMIN_PASSWORD, ADMIN_IDS
+from config import BOT_TOKEN, ACTIVATION_PRICE, ACTIVATION_PRICE_TON, PAYMENT_PHONE, PROVIDER_TOKEN, ADMIN_IDS, ADMIN_PASSWORD, SERIAL_NUMBER_EXAMPLE, ADMIN_IDS
 
 
 WAITING_PHONE_PURCHASE, WAITING_NAME_PURCHASE = range(2)
-WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_KIT = range(5, 8)
+WAITING_PHONE_ACTIVATE, WAITING_NAME_ACTIVATE, WAITING_SERIAL, WAITING_SERIAL_PHOTO, WAITING_KIT = range(5, 10)
 WAITING_ADMIN_PASSWORD = 10
 
 
@@ -124,6 +126,87 @@ async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data['name'] = name
     context.user_data['phone'] = phone
     
+    message_text = (
+        "Спасибо за доверие! Для активации от Вас нужен серийный номер "
+        "(написан на ножке после букв SN) + фото серийного номера "
+        "(чтобы исключить риск активации чужого устройства), прилагаем пример:"
+    )
+    
+    photo_path_jpg = os.path.join(os.path.dirname(__file__), "images", "serial_number_example.jpg")
+    photo_path_png = os.path.join(os.path.dirname(__file__), "images", "serial_number_example.png")
+    
+    photo_sent = False
+    if os.path.exists(photo_path_jpg):
+        try:
+            with open(photo_path_jpg, 'rb') as photo:
+                await update.message.reply_photo(
+                    photo=photo,
+                    caption=message_text
+                )
+            photo_sent = True
+        except Exception as e:
+            print(f"Ошибка отправки фото JPG: {e}")
+    
+    if not photo_sent and os.path.exists(photo_path_png):
+        try:
+            with open(photo_path_png, 'rb') as photo:
+                await update.message.reply_photo(
+                    photo=photo,
+                    caption=message_text
+                )
+            photo_sent = True
+        except Exception as e:
+            print(f"Ошибка отправки фото PNG: {e}")
+    
+    if not photo_sent:
+        await update.message.reply_text(message_text)
+    
+    await update.message.reply_text(
+        "Пожалуйста, введите серийный номер устройства (SN):"
+    )
+    return WAITING_SERIAL
+
+
+async def handle_serial_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    serial_number = update.message.text.strip()
+    user_id = update.effective_user.id
+    
+    update_activation_serial_number(user_id, serial_number)
+    
+    await update.message.reply_text(
+        "Теперь отправьте фото серийного номера:"
+    )
+    return WAITING_SERIAL_PHOTO
+
+
+async def handle_serial_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    file_id = None
+    
+    if update.message.photo:
+        file_id = update.message.photo[-1].file_id
+    elif update.message.document:
+        file_id = update.message.document.file_id
+    else:
+        await update.message.reply_text(
+            "Пожалуйста, отправьте фото серийного номера (фото или документ)."
+        )
+        return WAITING_SERIAL_PHOTO
+
+
+async def handle_serial_photo_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Пожалуйста, отправьте фото серийного номера (фото или документ). "
+        "Вы также можете отменить операцию командой /cancel"
+    )
+    return WAITING_SERIAL_PHOTO
+    
+    update_activation_serial_photo(user_id, file_id)
+    
+    activation_id = context.user_data.get('activation_id')
+    name = context.user_data.get('name', '')
+    phone = context.user_data.get('phone', '')
+    
     payload = f"activation_{activation_id}_{user_id}"
     context.user_data['payment_payload'] = payload
     
@@ -141,7 +224,6 @@ async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYP
             f"💳 Также можно оплатить на номер Сбер: {PAYMENT_PHONE}\n\n"
             "После оплаты введите KIT номер устройства (буквы и цифры):"
         )
-        return WAITING_KIT
     except Exception as e:
         payment_info = (
             f"Стоимость активации: {ACTIVATION_PRICE}₽ ({ACTIVATION_PRICE_TON} TON)\n\n"
@@ -149,7 +231,8 @@ async def handle_name_activate(update: Update, context: ContextTypes.DEFAULT_TYP
             "Теперь введите KIT номер устройства (буквы и цифры):"
         )
         await update.message.reply_text(payment_info)
-        return WAITING_KIT
+    
+    return WAITING_KIT
 
 
 async def handle_kit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -292,7 +375,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "⚙️ Все активации:\n\n"
         for act in activations[:20]:
-            act_id, uid, phone, name, created_at, payment, receipt, kit, status, service_provided, service_provided_at = act[:11]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
             status_emoji = {
                 'pending': '⏳',
                 'payment_confirmed': '💳',
@@ -326,7 +409,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         text = "📋 Детальная информация по активациям:\n\n"
         for act in activations[:10]:
-            act_id, uid, phone, name, created_at, payment, receipt, kit, status, service_provided, service_provided_at = act[:11]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
             text += (
                 f"🔹 ID заявки: {act_id}\n"
                 f"User ID: {uid}\n"
@@ -367,7 +450,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cell.alignment = Alignment(horizontal='center')
         
         for act in activations:
-            act_id, uid, phone, name, created_at, payment, receipt, kit, status, service_provided, service_provided_at = act[:11]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
             
             start_date_str = ""
             end_date_str = ""
@@ -406,7 +489,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         buttons = []
         for act in activations[:50]:
-            act_id, uid, phone, name, created_at, payment, receipt, kit, status, service_provided, service_provided_at = act[:11]
+            act_id, uid, phone, name, created_at, payment, receipt, serial_num, serial_photo, kit, status, service_provided, service_provided_at = act[:13]
             if not service_provided:
                 buttons.append([InlineKeyboardButton(
                     f"ID {act_id}: {name} ({phone})",
@@ -478,6 +561,13 @@ def main():
             ],
             WAITING_NAME_ACTIVATE: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name_activate)
+            ],
+            WAITING_SERIAL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_serial_number)
+            ],
+            WAITING_SERIAL_PHOTO: [
+                MessageHandler(filters.PHOTO | filters.Document.ALL, handle_serial_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_serial_photo_text)
             ],
             WAITING_KIT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_kit),
