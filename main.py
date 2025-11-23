@@ -285,6 +285,24 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     return ConversationHandler.END
 
+async def start_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    welcome_text = (
+        "Добро пожаловать! 👋\n\n"
+        "Это техподдержка по активации терминалов Starlink. "
+        "Я помогу вам купить терминал или активировать уже имеющееся устройство.\n\n"
+        "Выберите нужное действие:"
+    )
+    
+    keyboard = [
+        [InlineKeyboardButton("🛒 Купить терминал", callback_data="buy")],
+        [InlineKeyboardButton("⚙️ Активировать", callback_data="activate")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+    return ConversationHandler.END
+
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS
@@ -569,7 +587,10 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name_purchase)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start_fallback)
+        ],
     )
     
     activation_handler = ConversationHandler(
@@ -603,7 +624,10 @@ def main():
                 MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback)
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("start", start_fallback)
+        ],
     )
     
     admin_password_handler_conv = ConversationHandler(
