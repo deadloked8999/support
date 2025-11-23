@@ -113,6 +113,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_callback_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    # Очищаем данные предыдущего процесса
+    context.user_data.clear()
     await query.message.reply_text(
         "Для покупки терминала мне нужна ваша информация.\n\n"
         "Пожалуйста, введите ваш номер телефона (формат: 8XXXXXXXXXX или +7XXXXXXXXXX):"
@@ -123,6 +125,8 @@ async def button_callback_buy(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def button_callback_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    # Очищаем данные предыдущего процесса
+    context.user_data.clear()
     await query.message.reply_text(
         "Для активации терминала мне нужна ваша информация.\n\n"
         "Пожалуйста, введите ваш номер телефона (формат: 8XXXXXXXXXX или +7XXXXXXXXXX):"
