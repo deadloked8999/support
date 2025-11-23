@@ -263,6 +263,53 @@ async def handle_serial_photo_text(update: Update, context: ContextTypes.DEFAULT
     return WAITING_SERIAL_PHOTO
 
 
+async def handle_box_serial_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    box_serial_number = update.message.text.strip()
+    user_id = update.effective_user.id
+    
+    update_activation_box_serial_number(user_id, box_serial_number)
+    
+    await update.message.reply_text(
+        "Теперь отправьте фото серийного номера с коробки:"
+    )
+    return WAITING_BOX_SERIAL_PHOTO
+
+
+async def handle_box_serial_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    file_id = None
+    
+    if update.message.photo:
+        file_id = update.message.photo[-1].file_id
+    elif update.message.document:
+        file_id = update.message.document.file_id
+    else:
+        await update.message.reply_text(
+            "Пожалуйста, отправьте фото серийного номера с коробки (фото или документ)."
+        )
+        return WAITING_BOX_SERIAL_PHOTO
+    
+    update_activation_box_serial_photo(user_id, file_id)
+    
+    # После получения фото коробки, переходим к оплате и запросу KIT
+    payment_info = (
+        f"Стоимость активации: {ACTIVATION_PRICE}₽\n\n"
+        f"Оплатите на номер Сбербанк: {PAYMENT_PHONE}\n\n"
+        "Теперь введите KIT номер устройства (буквы и цифры):"
+    )
+    
+    await update.message.reply_text(payment_info)
+    return WAITING_KIT
+
+
+async def handle_box_serial_photo_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Пожалуйста, отправьте фото серийного номера с коробки (фото или документ). "
+        "Вы также можете отменить операцию командой /cancel"
+    )
+    return WAITING_BOX_SERIAL_PHOTO
+
+
 async def handle_kit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kit_number = update.message.text.strip()
     user_id = update.effective_user.id
