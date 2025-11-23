@@ -980,10 +980,7 @@ def main():
         context.user_data.clear()
         query = update.callback_query
         await query.answer()
-        await query.message.reply_text(
-            "Для активации терминала мне нужна ваша информация.\n\n"
-            "Пожалуйста, введите ваш номер телефона (формат: 8XXXXXXXXXX или +7XXXXXXXXXX):"
-        )
+        # Просто завершаем текущий процесс, новый начнется через entry_point
         return ConversationHandler.END
     
     purchase_handler = ConversationHandler(
@@ -1009,10 +1006,7 @@ def main():
         context.user_data.clear()
         query = update.callback_query
         await query.answer()
-        await query.message.reply_text(
-            "Для покупки терминала мне нужна ваша информация.\n\n"
-            "Пожалуйста, введите ваш номер телефона (формат: 8XXXXXXXXXX или +7XXXXXXXXXX):"
-        )
+        # Просто завершаем текущий процесс, новый начнется через entry_point
         return ConversationHandler.END
     
     activation_handler = ConversationHandler(
