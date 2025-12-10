@@ -1218,18 +1218,9 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                    "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
         
-        # Создаем границы для ячеек
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        
         for cell in ws[1]:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal='center')
-            cell.border = thin_border
         
         for act in activations:
             act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
@@ -1434,18 +1425,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                    "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
         
-        # Создаем границы для ячеек
-        thin_border = Border(
-            left=Side(style='thin'),
-            right=Side(style='thin'),
-            top=Side(style='thin'),
-            bottom=Side(style='thin')
-        )
-        
         for cell in ws[1]:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal='center')
-            cell.border = thin_border
         
         for act in activations:
             act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
