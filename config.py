@@ -1,4 +1,4 @@
-BOT_TOKEN = "8506982447:AAG8bd7if_ceyUmMhJhd-aIwWy36Yt56L8w"
+BOT_TOKEN = "8555025335:AAF7Lrc3mXOGVISqOf3edDLXu3ViFfbY9Gs"
 DATABASE_NAME = "bot_data.db"
 ACTIVATION_PRICE = 14000  # Цена в рублях
 ACTIVATION_PRICE_TON = 50  # Цена в TON (примерно 50 TON = 14000₽, уточните курс)
