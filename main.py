@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 from openpyxl import Workbook
-from openpyxl.styles import Font, Alignment
+from openpyxl.styles import Font, Alignment, Border, Side
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -820,10 +820,19 @@ async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_
                "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
     ws.append(headers)
     
+    # Создаем границы для ячеек
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
     # Форматирование заголовков
     for cell in ws[1]:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
     
     # Добавляем данные заявки
     start_date_str = ""
@@ -851,6 +860,11 @@ async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_
         email if email else "",
         password if password else ""
     ])
+    
+    # Применяем границы ко всем ячейкам с данными
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=len(headers)):
+        for cell in row:
+            cell.border = thin_border
     
     # Автоматическая ширина столбцов
     from openpyxl.utils import get_column_letter
@@ -953,10 +967,19 @@ async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_
                "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
     ws.append(headers)
     
+    # Создаем границы для ячеек
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
     # Форматирование заголовков
     for cell in ws[1]:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal='center')
+        cell.border = thin_border
     
     # Добавляем данные заявки
     start_date_str = ""
@@ -984,6 +1007,11 @@ async def show_activation_details(update: Update, context: ContextTypes.DEFAULT_
         email if email else "",
         password if password else ""
     ])
+    
+    # Применяем границы ко всем ячейкам с данными
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=len(headers)):
+        for cell in row:
+            cell.border = thin_border
     
     # Автоматическая ширина столбцов
     from openpyxl.utils import get_column_letter
@@ -1218,9 +1246,18 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                    "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
         
+        # Создаем границы для ячеек
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
         for cell in ws[1]:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
         
         for act in activations:
             act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
@@ -1251,6 +1288,11 @@ async def admin_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 email if email else "",
                 password if password else ""
             ])
+        
+        # Применяем границы ко всем ячейкам с данными
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=len(headers)):
+            for cell in row:
+                cell.border = thin_border
         
         # Автоматическая ширина столбцов
         from openpyxl.utils import get_column_letter
@@ -1425,9 +1467,18 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                    "Дата начала активации", "Дата окончания подписки", "Email", "Пароль"]
         ws.append(headers)
         
+        # Создаем границы для ячеек
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
         for cell in ws[1]:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal='center')
+            cell.border = thin_border
         
         for act in activations:
             act_id, uid, phone, name, username, created_at, payment, receipt, serial_num, serial_photo, box_serial, box_photo, kit, status, service_provided, service_provided_at, email, password = act[:18]
@@ -1458,6 +1509,11 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 email if email else "",
                 password if password else ""
             ])
+        
+        # Применяем границы ко всем ячейкам с данными
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=len(headers)):
+            for cell in row:
+                cell.border = thin_border
         
         # Автоматическая ширина столбцов
         from openpyxl.utils import get_column_letter
